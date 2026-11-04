@@ -18,7 +18,7 @@
 void logMessage(QtMsgType type, const QMessageLogContext& context, const QString& msg) {
     Q_UNUSED(type);
     Q_UNUSED(context);
-    QFile f("D:/seer/3dmaster/3dmaster/test_log.txt");
+    QFile f(QDir(QDir::tempPath()).filePath("test_log.txt"));
     if (f.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
         QTextStream out(&f);
         out << msg << "\n";
@@ -52,21 +52,27 @@ public slots:
 };
 
 int main(int argc, char* argv[]) {
-    QFile::remove("D:/seer/3dmaster/3dmaster/test_log.txt");
+    QFile::remove(QDir(QDir::tempPath()).filePath("test_log.txt"));
     qInstallMessageHandler(logMessage);
 
     QApplication app(argc, argv);
 
-    QString pluginPath = "D:/seer/3dmaster/3dmaster/build/Release/3dmaster.dll";
+    QString pluginPath = "../3dmaster/build/Release/3dmaster.dll";
     if (!QFile::exists(pluginPath)) {
-        pluginPath = "D:/seer/3dmaster/3dmaster/3dmaster.dll";
+        pluginPath = "../3dmaster/3dmaster.dll";
     }
+#ifndef Q_OS_WIN
+    pluginPath = "../3dmaster/build/lib3dmaster.so";
+    if (!QFile::exists(pluginPath)) {
+        pluginPath = "lib3dmaster.so";
+    }
+#endif
 
-    QString testModel = "C:/Users/50350/Downloads/三腔接头-260416-2.stp";
+    QString testModel = "../test_models/box.glb";
     if (argc > 1) {
         testModel = QString::fromLocal8Bit(argv[1]);
     }
-    QString screenshotPath = "D:/seer/3dmaster/3dmaster/test_render.png";
+    QString screenshotPath = "test_render.png";
     if (argc > 2) {
         screenshotPath = QString::fromLocal8Bit(argv[2]);
     }

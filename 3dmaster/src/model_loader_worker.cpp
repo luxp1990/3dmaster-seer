@@ -96,7 +96,7 @@ private:
 
 static void traceWorkerLog(const QString& msg) {
     qDebug() << "[3dmaster Worker]" << msg;
-    const QString logPath = QDir(QDir::tempPath()).filePath("3dmaster.log");
+    const QString logPath = "3dmaster.log";
     QFile f(logPath);
     if (f.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
         QTextStream out(&f);

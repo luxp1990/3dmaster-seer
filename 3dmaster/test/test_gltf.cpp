@@ -8,7 +8,7 @@
 #include <iostream>
 
 int main(int argc, char* argv[]) {
-    const char* path = "D:/seer/3dmaster/test_models/box.glb";
+    const char* path = "../test_models/box.glb";
     if (argc > 1) {
         path = argv[1];
     }

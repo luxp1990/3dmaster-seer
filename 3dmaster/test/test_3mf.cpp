@@ -1,4 +1,4 @@
-#include <QtCore/private/qzipreader_p.h>
+#include <QtGui/private/qzipreader_p.h>
 #include <QXmlStreamReader>
 #include <QFile>
 #include <QVector3D>
@@ -6,7 +6,7 @@
 #include <iostream>
 
 int main(int argc, char* argv[]) {
-    QString path = "D:/seer/3dmaster/test_models/prism.3mf";
+    QString path = "../test_models/prism.3mf";
     if (argc > 1) {
         path = QString::fromLocal8Bit(argv[1]);
     }

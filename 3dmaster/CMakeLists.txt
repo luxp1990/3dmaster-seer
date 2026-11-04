@@ -44,6 +44,7 @@ set(HEADERS
     "${SeerSdk_SOURCE_DIR}/seer/viewerbase.h"
 )
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../occt/inc")
 add_library(3dmaster SHARED ${SOURCES} ${HEADERS})
 
 target_include_directories(3dmaster PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../occt/inc")
@@ -53,6 +54,7 @@ target_link_libraries(3dmaster PRIVATE
     SeerSdk::SeerSdk
     Qt6::Core
     Qt6::CorePrivate
+    Qt6::GuiPrivate
     Qt6::Gui
     Qt6::Widgets
     Qt6::OpenGL
@@ -156,10 +158,13 @@ target_link_libraries(test_gltf PRIVATE
     TKService
 )
 
+endif()
+
 add_executable(test_3mf test/test_3mf.cpp)
 target_link_libraries(test_3mf PRIVATE
     Qt6::Core
     Qt6::CorePrivate
+    Qt6::GuiPrivate
     Qt6::Gui
 )
 
