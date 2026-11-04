@@ -1,0 +1,18 @@
+Based on the code evidence, here is the assessment of what works fully standalone and what degrades without external CAD software:
+
+**1. Formats that work fully standalone (Yes)**
+The following formats work 100% standalone out-of-the-box (no external CAD software needed). They rely only on the bundled OCCT runtime (for CAD formats like STEP/IGES) and the built-in custom parsers (for mesh formats):
+- **STEP (.stp, .step)**: Parsed in-memory using the bundled OpenCASCADE Technology (`STEPCAFControl_Reader`).
+- **IGES (.igs, .iges)**: Parsed in-memory using bundled OCCT (`IGESControl_Reader`).
+- **glTF / GLB (.gltf, .glb)**: Parsed in-memory using bundled OCCT (`DEGLTF_Provider`).
+- **3MF (.3mf)**: Parsed standalone natively using Qt's `QZipReader` and `QXmlStreamReader` (custom in-house parser).
+- **STL, OBJ, PLY, OFF**: Parsed standalone natively using custom in-house binary/text binary streaming code without OCCT.
+
+**2. Formats that degrade/fail without external CAD software**
+- **Siemens NX PRT / PTC Creo PRT (.prt)**: **No**, they do *not* work fully standalone.
+  - **Why:** The codebase identifies `.prt` as a closed-source binary format (OLE2 composite document for NX). It does *not* contain an independent PRT parser.
+  - **Behavior:** The plugin scans the system registry and common install paths for a local installation of Siemens NX (`step214ug.exe`).
+    - If `step214ug.exe` is found, the plugin launches it as a background process (`QProcess proc;`) to quietly translate the `.prt` into a `.stp` cache file, which is then parsed by the bundled OCCT STEP reader.
+    - If NX is *not* installed (or if it's a PTC Creo PRT), the conversion gracefully aborts and the plugin shows a fallback UI message: *"此格式为西门子私有闭源二进制容器... 请在设计端另存/导出为 STEP (.stp / .step) 或 IGES (.igs)"*.
+
+In summary: all standard mesh and neutral CAD formats work perfectly offline and standalone. Only native proprietary `.prt` files require the corresponding external CAD application (NX) to be locally installed.
