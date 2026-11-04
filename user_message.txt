@@ -1,9 +1,0 @@
-The plugin provides a `MasterPlugin` which implements `ViewerPluginInterface` from the official `Seer-sdk`, using Qt's `Q_PLUGIN_METADATA` and `Q_INTERFACES`. It relies on Seer loading this shared library (`3dmaster.dll` or `lib3dmaster.so`) dynamically using `QPluginLoader`, and then calling `createViewer(QWidget*)` to get an instance of `MasterViewer`, which subclasses `ViewerBase`.
-
-Yes, the 3dmaster plugin can run in the Seer host without needing other external processes/daemons if the proper files are installed alongside.
-The runtime dependencies are:
-- Qt 6 (Core, Gui, Widgets, OpenGL, OpenGLWidgets components)
-- OpenCASCADE Technology (OCCT 8.0.0) runtime libraries (e.g. `TKDESTEP`, `TKXCAF`, `TKBRep`, etc., as linked in `CMakeLists.txt`)
-- Standard C++ runtimes (`MSVCP140.dll` / `VCRUNTIME140.dll` for MSVC, or `libstdc++.so.6` for Linux).
-- It relies on reading `plugin.json` (as exported in `Q_PLUGIN_METADATA`).
-- On Windows, it attempts to read the Seer plugin installation dir layout (putting `3dmaster.dll` and `plugin.json` in `Seer安装目录\plugins\3dmaster\`). It does not run standalone servers or daemon processes itself, but it does invoke some system commands dynamically if installed (like `step214ug.exe` if NX is installed on the machine, but that is optional parsing logic, not a strict runtime dependency).
