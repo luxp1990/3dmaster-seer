@@ -276,7 +276,7 @@ void ModelLoaderWorker::startLoading() {
     QString fileName = QFileInfo(m_filePath).fileName();
     emit sigProgress(5, QString("正在读取模型: %1...").arg(fileName));
 
-    if (m_cancelRequested.load()) {
+    if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) {
         traceWorkerLog("startLoading: Cancelled early");
         emit sigFailed("加载已取消");
         return;
@@ -285,7 +285,7 @@ void ModelLoaderWorker::startLoading() {
     // 优先使用原生 Unicode 路径直接解析（QFile 宽字符底层完美支持所有中文路径）
     traceWorkerLog("Calling parseModel with m_filePath: " + m_filePath);
     ModelDataPtr model = parseModel(m_filePath);
-    if (!model && !m_cancelRequested.load()) {
+    if (!model && !(m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested())) {
         traceWorkerLog("parseModel with m_filePath returned null, trying resolveSafePath...");
         QString safePath = resolveSafePath(m_filePath);
         traceWorkerLog("resolveSafePath result: " + safePath);
@@ -294,7 +294,7 @@ void ModelLoaderWorker::startLoading() {
         }
     }
 
-    if (m_cancelRequested.load()) {
+    if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) {
         traceWorkerLog("startLoading: Cancelled after parse");
         emit sigFailed("加载已取消");
         return;
@@ -313,7 +313,7 @@ void ModelLoaderWorker::startLoading() {
     emit sigProgress(95, "正在计算模型三维包围盒与材质属性...");
     model->calculateBounds();
 
-    if (m_cancelRequested.load()) {
+    if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) {
         traceWorkerLog("startLoading: Cancelled before emitting sigFinished");
         emit sigFailed("加载已取消");
         return;
@@ -389,6 +389,13 @@ bool ModelLoaderWorker::parseSTL(const QString& path, ModelDataPtr outModel) {
     uint32_t triangleCount = 0;
     file.read(reinterpret_cast<char*>(&triangleCount), 4);
 
+    // Safety cap: each binary STL triangle is 50 bytes. Also cap ASCII just in case.
+    qint64 fileSize = file.size();
+    if (static_cast<qint64>(triangleCount) > fileSize / 5) { // generous for ascii/binary
+        m_customErrorMessage = "安全拦截：文件声明的几何数量远超实际文件体积，可能为损坏文件。";
+        return false;
+    }
+
     // 空间哈希顶点焊接与曲面平滑结构体定义 (0.001mm = 1微米量化公差)
     struct PosKey {
         int64_t x, y, z;
@@ -459,7 +466,7 @@ bool ModelLoaderWorker::parseSTL(const QString& path, ModelDataPtr outModel) {
 
         uint32_t readCount = 0;
         while (readCount < triangleCount) {
-            if (m_cancelRequested.load()) return false;
+            if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
 
             uint32_t currentChunk = std::min(static_cast<uint32_t>(chunkSize), triangleCount - readCount);
             qint64 bytesRead = file.read(chunk.data(), currentChunk * 50);
@@ -521,7 +528,7 @@ bool ModelLoaderWorker::parseSTL(const QString& path, ModelDataPtr outModel) {
         int linesRead = 0;
         while (!in.atEnd()) {
             if (++linesRead % 20000 == 0) {
-                if (m_cancelRequested.load()) return false;
+                if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
                 emit sigProgress(30, "正在流式解析 ASCII STL...");
             }
             QString line = in.readLine().trimmed();
@@ -582,7 +589,7 @@ bool ModelLoaderWorker::parseOBJ(const QString& path, ModelDataPtr outModel) {
 
     while (!in.atEnd()) {
         if (++lineCounter % 30000 == 0) {
-            if (m_cancelRequested.load()) return false;
+            if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
             emit sigProgress(40, QString("已解析 %1 行 OBJ 几何数据...").arg(lineCounter));
         }
 
@@ -709,6 +716,12 @@ bool ModelLoaderWorker::parsePLY(const QString& path, ModelDataPtr outModel) {
 
     if (vertexCount <= 0) return false;
 
+    qint64 plyFileSize = file.size();
+    if (static_cast<qint64>(vertexCount) > plyFileSize / 12) {
+        m_customErrorMessage = "安全拦截：文件声明的顶点数量远超实际文件体积，可能为损坏文件。";
+        return false;
+    }
+
     SubMesh mesh;
     mesh.name = QFileInfo(path).baseName();
     mesh.diffuseColor = QVector3D(0.45f, 0.75f, 0.65f); // 工业薄荷翠绿材质
@@ -722,7 +735,7 @@ bool ModelLoaderWorker::parsePLY(const QString& path, ModelDataPtr outModel) {
         const qint64 bufSize = vBuffer.size();
 
         for (int i = 0; i < vertexCount; ++i) {
-            if (i % 20000 == 0 && m_cancelRequested.load()) return false;
+            if (i % 20000 == 0 && (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested())) return false;
             qint64 offset = static_cast<qint64>(i) * vertexByteSize;
             if (offset + 12 > bufSize) break;
 
@@ -750,7 +763,7 @@ bool ModelLoaderWorker::parsePLY(const QString& path, ModelDataPtr outModel) {
         // 读取 Face 拓扑面片
         if (faceCount > 0) {
             for (int f = 0; f < faceCount; ++f) {
-                if (f % 20000 == 0 && m_cancelRequested.load()) return false;
+                if (f % 20000 == 0 && (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested())) return false;
                 uint8_t nVerts = 0;
                 if (file.read(reinterpret_cast<char*>(&nVerts), 1) != 1) break;
                 if (nVerts < 3) continue;
@@ -772,7 +785,7 @@ bool ModelLoaderWorker::parsePLY(const QString& path, ModelDataPtr outModel) {
         // ASCII PLY
         QTextStream in(&file);
         for (int i = 0; i < vertexCount; ++i) {
-            if (i % 20000 == 0 && m_cancelRequested.load()) return false;
+            if (i % 20000 == 0 && (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested())) return false;
             while (!in.atEnd()) {
                 QString vLine = in.readLine().trimmed();
                 if (vLine.isEmpty()) continue;
@@ -793,7 +806,7 @@ bool ModelLoaderWorker::parsePLY(const QString& path, ModelDataPtr outModel) {
         }
         if (faceCount > 0) {
             for (int f = 0; f < faceCount; ++f) {
-                if (f % 20000 == 0 && m_cancelRequested.load()) return false;
+                if (f % 20000 == 0 && (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested())) return false;
                 while (!in.atEnd()) {
                     QString fLine = in.readLine().trimmed();
                     if (fLine.isEmpty()) continue;
@@ -885,6 +898,12 @@ bool ModelLoaderWorker::parseOFF(const QString& path, ModelDataPtr outModel) {
 
     if (vertexCount <= 0) return false;
 
+    qint64 offFileSize = file.size();
+    if (static_cast<qint64>(vertexCount) > offFileSize / 5) {
+        m_customErrorMessage = "安全拦截：文件声明的顶点数量远超实际文件体积，可能为损坏文件。";
+        return false;
+    }
+
     SubMesh mesh;
     mesh.name = QFileInfo(path).baseName();
     mesh.diffuseColor = QVector3D(0.85f, 0.55f, 0.25f); // 工业琥珀金材质
@@ -893,7 +912,7 @@ bool ModelLoaderWorker::parseOFF(const QString& path, ModelDataPtr outModel) {
 
     int readVerts = 0;
     while (!in.atEnd() && readVerts < vertexCount) {
-        if (readVerts % 20000 == 0 && m_cancelRequested.load()) return false;
+        if (readVerts % 20000 == 0 && (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested())) return false;
         QString line = in.readLine().trimmed();
         if (line.isEmpty() || line.startsWith("#")) continue;
         QTextStream ts(&line);
@@ -905,7 +924,7 @@ bool ModelLoaderWorker::parseOFF(const QString& path, ModelDataPtr outModel) {
 
     int readFaces = 0;
     while (!in.atEnd() && readFaces < faceCount) {
-        if (readFaces % 20000 == 0 && m_cancelRequested.load()) return false;
+        if (readFaces % 20000 == 0 && (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested())) return false;
         QString line = in.readLine().trimmed();
         if (line.isEmpty() || line.startsWith("#")) continue;
         QTextStream ts(&line);
@@ -969,7 +988,7 @@ QVector<SubMesh> ModelLoaderWorker::tessellatePrototype(const TopoDS_Shape& shap
         return result;
     }
 
-    if (m_cancelRequested.load()) return result;
+    if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return result;
 
     Bnd_Box bndBox;
     BRepBndLib::AddClose(shape, bndBox);
@@ -997,13 +1016,13 @@ QVector<SubMesh> ModelLoaderWorker::tessellatePrototype(const TopoDS_Shape& shap
     mesher.ChangeParameters().InParallel = true;
     mesher.Perform(cancelIndicator->Start());
 
-    if (m_cancelRequested.load()) return result;
+    if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return result;
 
     try {
         BRepLib::EnsureNormalConsistency(shape, 0.001, true);
     } catch (...) {}
 
-    if (m_cancelRequested.load()) return result;
+    if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return result;
 
     SubMesh solidMesh;
     solidMesh.name = baseName + "_solid";
@@ -1038,7 +1057,7 @@ QVector<SubMesh> ModelLoaderWorker::tessellatePrototype(const TopoDS_Shape& shap
 
     TopExp_Explorer faceExp(shape, TopAbs_FACE);
     for (; faceExp.More(); faceExp.Next()) {
-        if (m_cancelRequested.load()) return result;
+        if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return result;
 
         const TopoDS_Face& face = TopoDS::Face(faceExp.Current());
         TopLoc_Location loc;
@@ -1151,7 +1170,7 @@ QVector<SubMesh> ModelLoaderWorker::tessellatePrototype(const TopoDS_Shape& shap
         TopExp::MapShapesAndAncestors(shape, TopAbs_EDGE, TopAbs_FACE, edgeToFaceMap);
 
     for (int i = 1; i <= edgeToFaceMap.Extent(); ++i) {
-        if (m_cancelRequested.load()) return result;
+        if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return result;
 
         const TopoDS_Edge& edge = TopoDS::Edge(edgeToFaceMap.FindKey(i));
         const TopTools_ListOfShape& faces = edgeToFaceMap.FindFromIndex(i);
@@ -1397,7 +1416,7 @@ bool ModelLoaderWorker::parseSTEP(const QString& path, ModelDataPtr outModel) {
     // 合作式等待获取全局 OCCT 单例互斥锁 (杜绝多线程并发竞态)
     std::unique_lock<std::mutex> lock(g_occtSessionMutex, std::defer_lock);
     while (!lock.try_lock()) {
-        if (m_cancelRequested.load()) return false;
+        if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
         QThread::msleep(20);
     }
 
@@ -1426,12 +1445,12 @@ bool ModelLoaderWorker::parseSTEP(const QString& path, ModelDataPtr outModel) {
             return false;
         }
 
-        if (m_cancelRequested.load()) return false;
+        if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
 
         emit sigProgress(45, "正在转换 CAD B-Rep 实体装配拓扑结构与属性树...");
         occ::handle<OcctCancelIndicator> stepCancelIndicator = new OcctCancelIndicator(m_cancelRequested);
         reader.Transfer(docGuard.doc, stepCancelIndicator->Start());
-        if (m_cancelRequested.load()) return false;
+        if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
 
         occ::handle<XCAFDoc_ShapeTool> shapeTool = XCAFDoc_DocumentTool::ShapeTool(docGuard.doc->Main());
         occ::handle<XCAFDoc_ColorTool> colorTool = XCAFDoc_DocumentTool::ColorTool(docGuard.doc->Main());
@@ -1501,7 +1520,7 @@ bool ModelLoaderWorker::parseSTEP(const QString& path, ModelDataPtr outModel) {
             double deflectionScale = 1.0;
 
             for (size_t pIdx = 0; pIdx < prototypes.size(); ++pIdx) {
-                if (m_cancelRequested.load()) break;
+                if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) break;
                 const auto& proto = prototypes[pIdx];
 
                 // Triangle Budget 防护：若累计三角面数超过 3,000,000 面，自适应扩大公差防止超大装配体爆显存
@@ -1535,11 +1554,11 @@ bool ModelLoaderWorker::parseSTEP(const QString& path, ModelDataPtr outModel) {
                 }
             }
 
-            if (m_cancelRequested.load()) return false;
+            if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
 
             emit sigProgress(85, QString("正在组装空间装配体部件 (共 %1 个实例)...").arg(instances.size()));
             for (size_t i = 0; i < instances.size(); ++i) {
-                if (m_cancelRequested.load()) break;
+                if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) break;
                 const auto& inst = instances[i];
                 if (inst.protoId < 0 || inst.protoId >= static_cast<int>(protoMeshes.size())) continue;
 
@@ -1600,7 +1619,7 @@ bool ModelLoaderWorker::parseIGES(const QString& path, ModelDataPtr outModel) {
 
     std::unique_lock<std::mutex> lock(g_occtSessionMutex, std::defer_lock);
     while (!lock.try_lock()) {
-        if (m_cancelRequested.load()) return false;
+        if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
         QThread::msleep(20);
     }
 
@@ -1617,12 +1636,12 @@ bool ModelLoaderWorker::parseIGES(const QString& path, ModelDataPtr outModel) {
             return false;
         }
 
-        if (m_cancelRequested.load()) return false;
+        if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
 
         emit sigProgress(40, "正在转换 IGES 几何实体与装配 (TransferRoots)...");
         occ::handle<OcctCancelIndicator> igesCancelIndicator = new OcctCancelIndicator(m_cancelRequested);
         reader.TransferRoots(igesCancelIndicator->Start());
-        if (m_cancelRequested.load()) return false;
+        if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
 
         TopoDS_Shape shape = reader.OneShape();
         if (shape.IsNull()) {
@@ -1630,13 +1649,13 @@ bool ModelLoaderWorker::parseIGES(const QString& path, ModelDataPtr outModel) {
             return false;
         }
 
-        if (m_cancelRequested.load()) return false;
+        if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
 
         // IGES 模型常见破面与未缝合问题，通过 ShapeFix 进行强力几何自愈
         emit sigProgress(55, "正在执行 IGES 拓扑自愈与曲面缝合 (ShapeFix)...");
         ShapeFix_Shape fixer(shape);
         fixer.Perform(igesCancelIndicator->Start());
-        if (m_cancelRequested.load()) return false;
+        if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
         shape = fixer.Shape();
 
         return processShapeTessellation(shape, QFileInfo(path).baseName(), outModel);
@@ -1658,7 +1677,7 @@ bool ModelLoaderWorker::parseGLTF(const QString& path, ModelDataPtr outModel) {
 
     std::unique_lock<std::mutex> lock(g_occtSessionMutex, std::defer_lock);
     while (!lock.try_lock()) {
-        if (m_cancelRequested.load()) return false;
+        if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
         QThread::msleep(20);
     }
 
@@ -1685,7 +1704,7 @@ bool ModelLoaderWorker::parseGLTF(const QString& path, ModelDataPtr outModel) {
             return false;
         }
 
-        if (m_cancelRequested.load()) return false;
+        if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
 
         emit sigProgress(50, "正在提取 glTF 网格与材质特征...");
         return processShapeTessellation(shape, QFileInfo(path).baseName(), outModel);
@@ -1836,7 +1855,7 @@ bool ModelLoaderWorker::parse3MF(const QString& path, ModelDataPtr outModel) {
     int curColorGroupId = -1;
 
     while (!xml.atEnd() && !xml.hasError()) {
-        if (m_cancelRequested.load()) return false;
+        if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
         auto token = xml.readNext();
 
         if (token == QXmlStreamReader::StartElement) {
@@ -1972,7 +1991,7 @@ bool ModelLoaderWorker::parse3MF(const QString& path, ModelDataPtr outModel) {
     // 第一步：对所有包含网格的 RawObject 执行单次局部空间原型剖分与特征线提取
     QMap<int, QVector<SubMesh>> protoMeshes;
     for (auto it = objects.begin(); it != objects.end(); ++it) {
-        if (m_cancelRequested.load()) return false;
+        if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
         const RawObject& obj = it.value();
         if (obj.triangles.isEmpty() || obj.vertices.isEmpty()) continue;
 
@@ -2159,7 +2178,7 @@ bool ModelLoaderWorker::parse3MF(const QString& path, ModelDataPtr outModel) {
     };
 
     for (const auto& item : buildItems) {
-        if (m_cancelRequested.load()) return false;
+        if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
         instantiateObject(item.objectId, item.transform, 0);
     }
 
@@ -2429,11 +2448,11 @@ bool ModelLoaderWorker::parsePRT(const QString& path, ModelDataPtr outModel) {
 
                 // 加固: 轮询等待同时实时排空匿名管道缓冲，避免大量转码日志撑满管道导致子进程挂起死锁
                 int elapsedMs = 0;
-                const int timeoutMs = 60000;
+                const int timeoutMs = 120000; // generous 120s timeout
                 QByteArray stdOutBytes;
                 QByteArray stdErrBytes;
                 while (proc.state() != QProcess::NotRunning && elapsedMs < timeoutMs) {
-                    if (m_cancelRequested.load()) {
+                    if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) {
                         traceWorkerLog("parsePRT: User cancelled conversion, killing translator process.");
                         proc.kill();
                         proc.waitForFinished(1000);
@@ -2444,13 +2463,18 @@ bool ModelLoaderWorker::parsePRT(const QString& path, ModelDataPtr outModel) {
                     stdOutBytes.append(proc.readAllStandardOutput());
                     stdErrBytes.append(proc.readAllStandardError());
                     elapsedMs += 200;
+
+                    int progressPct = 15 + (elapsedMs * 35 / timeoutMs);
+                    emit sigProgress(progressPct, "正在调用 NX 引擎静默转码...");
                 }
 
                 if (proc.state() != QProcess::NotRunning) {
-                    traceWorkerLog("parsePRT: Translator process timed out after 60s, terminating.");
+                    traceWorkerLog("parsePRT: Translator process timed out after 120s, terminating.");
                     proc.kill();
                     proc.waitForFinished(1000);
                     QFile::remove(tempStpPath);
+                    m_customErrorMessage = "转换超时：PRT 文件过大或转换进程未响应，已中止。";
+                    return false;
                 }
 
                 stdOutBytes.append(proc.readAllStandardOutput());

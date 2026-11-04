@@ -236,6 +236,7 @@ void MasterViewer::onCancelRequested() {
         m_worker->requestCancel();  // 触发原子标记与 OcctCancelIndicator 中断
     }
     if (QThread* th = m_workerThread) {
+        th->requestInterruption();
         if (th->isRunning()) {
             th->quit();
             // 宿主卸载 DLL 或快速切换文件时优雅等待至多 1500ms，杜绝 OCCT 单例后台线程与 Guest DLL 卸载竞态
