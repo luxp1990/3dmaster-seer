@@ -5,7 +5,9 @@
 #include <QObject>
 #include <atomic>
 
+#ifndef DISABLE_OCCT_FOR_TESTING
 #include <Standard_Handle.hxx>
+#endif
 
 class TopoDS_Shape;
 class XCAFDoc_ColorTool;
@@ -43,6 +45,7 @@ private:
     bool parseOFF(const QString& path, ModelDataPtr outModel);
     bool parsePRT(const QString& path, ModelDataPtr outModel);
 
+#ifndef DISABLE_OCCT_FOR_TESTING
     // 通用 CAD 拓扑几何离散化与特征硬轮廓线提取 (STEP, IGES & GLTF 共享内核)
     bool processShapeTessellation(const TopoDS_Shape& shape,
                                   const QString& baseName,
@@ -60,6 +63,7 @@ private:
                                          const std::optional<QVector3D>& customPartColor,
                                          int prototypeId,
                                          double linearDeflectionScale = 1.0);
+#endif
 
     // 简体中文路径与特殊字符防御解析 (Windows 8.3 短文件名与安全别名)
     QString resolveSafePath(const QString& inputPath);
