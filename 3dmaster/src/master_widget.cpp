@@ -589,6 +589,9 @@ void MasterWidget::buildBuffers() {
 
         // 8 角点矩阵快速映射计算世界 AABB (供每帧视锥体剔除快速相交)
         if (mesh.hasLocalAabb) {
+            gm.localAabbMin = mesh.localAabbMin;
+            gm.localAabbMax = mesh.localAabbMax;
+            gm.hasLocalAabb = true;
             const bool hasTrsf = !mesh.transform.isIdentity();
             if (!hasTrsf) {
                 gm.worldAabbMin = mesh.localAabbMin;
@@ -717,6 +720,12 @@ void MasterWidget::buildBuffers() {
         }
 
         m_glMeshes.push_back(gm);
+
+        // Release CPU-side bulk geometry to save RAM (trade-off: breaks CPU geometry access for potential picking or instant RAM-only cache rebuilding)
+        const_cast<SubMesh&>(mesh).vertices.clear();
+        const_cast<SubMesh&>(mesh).vertices.squeeze();
+        const_cast<SubMesh&>(mesh).indices.clear();
+        const_cast<SubMesh&>(mesh).indices.squeeze();
     }
 
     if (m_program) {
@@ -845,16 +854,19 @@ void MasterWidget::paintGL() {
             glPolygonOffset(1.0f, 1.0f);
         }
 
-        FrustumPlanes frustum = FrustumPlanes::fromMatrix(mvp);
         for (auto& gm : m_glMeshes) {
             if (!gm.visible) continue;
             if (gm.primitiveType == 0x0001 || gm.isFeatureEdge) continue;
-            // 视锥体快速裁剪：剔除视口外部构件，0 次 Draw Call
-            if (gm.hasWorldAabb && !frustum.isBoxVisible(gm.worldAabbMin, gm.worldAabbMax)) continue; // 线段留给线着色器绘制
 
             const bool hasInstTrsf = !gm.transform.isIdentity();
             QMatrix4x4 curModel = hasInstTrsf ? (modelMatrix * gm.transform) : modelMatrix;
             QMatrix4x4 curMVP = hasInstTrsf ? (mvp * gm.transform) : mvp;
+
+            // 视锥体快速裁剪：剔除视口外部构件，0 次 Draw Call (使用局部包围盒与局部视锥更精确)
+            if (gm.hasLocalAabb) {
+                FrustumPlanes localFrustum = FrustumPlanes::fromMatrix(curMVP);
+                if (!localFrustum.isBoxVisible(gm.localAabbMin, gm.localAabbMax)) continue; // 线段留给线着色器绘制
+            }
             m_program->setUniformValue("uModel", curModel);
             m_program->setUniformValue("uMVP", curMVP);
 
@@ -933,16 +945,19 @@ void MasterWidget::paintGL() {
         m_lineProgram->setUniformValue("uSectionEnabled", m_sectionEnabled ? 1 : 0);
         m_lineProgram->setUniformValue("uSectionPlane", sectionPlane);
 
-        FrustumPlanes edgeFrustum = FrustumPlanes::fromMatrix(mvp);
         for (auto& gm : m_glMeshes) {
             if (!gm.visible) continue;
             if (gm.primitiveType != 0x0001 && !gm.isFeatureEdge) continue;
-            // 视锥体快速裁剪：剔除视口外部特征线
-            if (gm.hasWorldAabb && !edgeFrustum.isBoxVisible(gm.worldAabbMin, gm.worldAabbMax)) continue;
 
             const bool hasInstTrsf = !gm.transform.isIdentity();
             QMatrix4x4 curModel = hasInstTrsf ? (modelMatrix * gm.transform) : modelMatrix;
             QMatrix4x4 curMVP = hasInstTrsf ? (mvp * gm.transform) : mvp;
+
+            // 视锥体快速裁剪：剔除视口外部特征线
+            if (gm.hasLocalAabb) {
+                FrustumPlanes localFrustum = FrustumPlanes::fromMatrix(curMVP);
+                if (!localFrustum.isBoxVisible(gm.localAabbMin, gm.localAabbMax)) continue;
+            }
             m_lineProgram->setUniformValue("uModel", curModel);
             m_lineProgram->setUniformValue("uMVP", curMVP);
 

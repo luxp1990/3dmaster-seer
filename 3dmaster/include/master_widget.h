@@ -137,6 +137,9 @@ private:
         QVector3D worldAabbMin; // 世界空间包围盒下界 (用于视锥体剔除 Frustum Culling)
         QVector3D worldAabbMax; // 世界空间包围盒上界
         bool hasWorldAabb = false;
+        QVector3D localAabbMin;
+        QVector3D localAabbMax;
+        bool hasLocalAabb = false;
     };
     QVector<GLMesh> m_glMeshes;
 
