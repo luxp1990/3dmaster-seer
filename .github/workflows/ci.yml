@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ qt6-base-dev qt6-base-private-dev libgl1-mesa-dev xvfb
+
+      - name: Configure and Build
+        run: |
+          cd 3dmaster
+          cmake -B build -S .
+          cmake --build build -j$(nproc)
+
+      - name: Run C++ Tests
+        run: |
+          cd 3dmaster/build
+          xvfb-run -a ./test_3mf
+          # test_robustness requires 3dmaster library. If it was built, run it.
+          if [ -f "./test_robustness" ]; then
+            xvfb-run -a ./test_robustness
+          else
+            echo "test_robustness not built (requires OCCT 8.0.0), skipping."
+          fi
+
+      - name: Run UI Smoke Test
+        run: |
+          if [ -f "3dmaster/build/test_host" ]; then
+            cd 3dmaster/build
+            QT_QPA_PLATFORM=offscreen xvfb-run -a ./test_host ../../test_models/box.glb
+          else
+            echo "test_host not built (requires OCCT 8.0.0), skipping UI smoke test in this environment"
+          fi
