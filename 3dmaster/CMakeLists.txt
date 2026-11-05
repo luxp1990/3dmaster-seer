@@ -185,5 +185,5 @@ add_executable(test_robustness
  test/test_robustness.cpp)
 target_link_libraries(test_robustness PRIVATE
     3dmaster
-    Qt6::Core
+    Qt6::Core Qt6::Gui Qt6::CorePrivate Qt6::GuiPrivate
 )
