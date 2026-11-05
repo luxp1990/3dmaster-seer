@@ -36,7 +36,7 @@
 #include <TDF_LabelSequence.hxx>
 
 int wmain(int argc, wchar_t* argv[]) {
-    std::filesystem::path p(L"C:/Users/50350/Downloads/三腔接头-260416-2.stp");
+    std::filesystem::path p(L"../test_models/sample.stp");
     if (argc > 1) {
         p = argv[1];
     }

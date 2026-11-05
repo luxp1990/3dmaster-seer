@@ -64,6 +64,10 @@ MasterWidget::~MasterWidget() {
             if (gm.ibo && destroyedBuffers.insert(gm.ibo.get()).second) {
                 if (gm.ibo->isCreated()) gm.ibo->destroy();
             }
+            // Explicitly reset the smart pointers so they don't try to auto-delete again
+            gm.vao.reset();
+            gm.vbo.reset();
+            gm.ibo.reset();
         }
         m_glMeshes.clear();
         if (m_gridVbo.isCreated()) {
