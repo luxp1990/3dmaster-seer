@@ -181,9 +181,8 @@ target_link_libraries(test_ui_smoke PRIVATE
     Qt6::OpenGLWidgets
 )
 
-add_executable(test_robustness
- test/test_robustness.cpp)
-target_link_libraries(test_robustness PRIVATE
-    3dmaster
-    Qt6::Core Qt6::Gui Qt6::CorePrivate Qt6::GuiPrivate
-)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../occt/inc")
+    add_executable(test_robustness test/test_robustness.cpp)
+    target_include_directories(test_robustness PRIVATE include)
+    target_link_libraries(test_robustness PRIVATE 3dmaster Qt6::Core Qt6::Gui)
+endif()
