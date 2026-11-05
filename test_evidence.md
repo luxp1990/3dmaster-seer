@@ -19,3 +19,36 @@ QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-jules'
 ### NOT RUN / NOT VERIFIED
 - **test_host**: The `test_host` executable and the core `3dmaster.dll` library require Open CASCADE 8.0.0 headers to compile. Because the Ubuntu CI environment (and the sandbox environment) do not currently provide OCCT 8.0.0 headers, these binaries are skipped during the CMake configuration step. Consequently, the original UI smoke test utilizing `test_host` cannot be executed and is marked as NOT VERIFIED.
 - **test_robustness**: This test executable links against the `3dmaster` library, which requires OCCT 8.0.0. Without the library, this test is NOT RUN in CI.
+
+### Detailed Test Evidence
+```
+$ cd 3dmaster && cmake -B build -S .
+-- The CXX compiler identification is GNU 13.3.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+...
+-- Configuring done (2.2s)
+-- Generating done (0.0s)
+-- Build files have been written to: /app/3dmaster/build
+Exit code: 0
+
+$ cmake --build build -j$(nproc)
+[  0%] Built target test_robustness_autogen_timestamp_deps
+[  0%] Built target test_ui_smoke_autogen_timestamp_deps
+...
+[ 83%] Linking CXX executable test_ui_smoke
+[ 91%] Linking CXX executable test_3mf
+[ 91%] Built target test_ui_smoke
+[ 91%] Built target test_3mf
+Exit code: 0
+
+$ xvfb-run -a ./test_3mf
+[Test 3MF] Complete.
+Exit code: 0
+
+$ xvfb-run -a ./test_ui_smoke
+QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-jules'
+[UI Smoke Test] OpenGL context created successfully in offscreen platform.
+[UI Smoke Test] Shut down cleanly. Exit code: 0
+Exit code: 0
+```

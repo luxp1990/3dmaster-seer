@@ -36,9 +36,5 @@ jobs:
 
       - name: Run UI Smoke Test
         run: |
-          if [ -f "3dmaster/build/test_host" ]; then
-            cd 3dmaster/build
-            QT_QPA_PLATFORM=offscreen xvfb-run -a ./test_host ../../test_models/box.glb
-          else
-            echo "test_host not built (requires OCCT 8.0.0), skipping UI smoke test in this environment"
-          fi
+          cd 3dmaster/build
+          QT_QPA_PLATFORM=offscreen xvfb-run -a ./test_ui_smoke

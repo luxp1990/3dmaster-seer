@@ -17,7 +17,8 @@ int main(int argc, char* argv[]) {
     if (context.create()) {
         qDebug() << "[UI Smoke Test] OpenGL context created successfully in offscreen platform.";
     } else {
-        qDebug() << "[UI Smoke Test] Failed to create OpenGL context. (normal in some headless CIs if X/Mesa isn't fully configured)";
+        qCritical() << "[UI Smoke Test] Failed to create OpenGL context.";
+        return 1;
     }
 
     // Verify it loads offscreen and shuts down cleanly
