@@ -10,7 +10,7 @@
 Tested locally via `cd 3dmaster && cmake -B build -S . && cmake --build build -j$(nproc)` followed by `xvfb-run -a ./build/test_ui_smoke`. The other targets skip compiling when the `../occt/inc` directory is missing, matching the exact conditional logic inside CMakeLists.txt.
 
 ```
-$ xvfb-run -a ./test_ui_smoke
+$ xvfb-run -a ./build/test_ui_smoke
 QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-jules'
 [UI Smoke Test] OpenGL context created successfully in offscreen platform.
 [UI Smoke Test] Shut down cleanly. Exit code: 0
@@ -42,11 +42,13 @@ $ cmake --build build -j$(nproc)
 [ 91%] Built target test_3mf
 Exit code: 0
 
-$ xvfb-run -a ./test_3mf
-[Test 3MF] Complete.
+$ xvfb-run -a ./build/test_3mf
+Testing 3MF reader on: ../test_models/prism.3mf
+3dmodel.model size: 1082 bytes
+Parsed vertex count: 6, triangle count: 8
 Exit code: 0
 
-$ xvfb-run -a ./test_ui_smoke
+$ xvfb-run -a ./build/test_ui_smoke
 QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-jules'
 [UI Smoke Test] OpenGL context created successfully in offscreen platform.
 [UI Smoke Test] Shut down cleanly. Exit code: 0

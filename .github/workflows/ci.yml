@@ -25,16 +25,16 @@ jobs:
 
       - name: Run C++ Tests
         run: |
-          cd 3dmaster/build
-          xvfb-run -a ./test_3mf
+          cd 3dmaster
+          xvfb-run -a ./build/test_3mf
           # test_robustness requires 3dmaster library. If it was built, run it.
-          if [ -f "./test_robustness" ]; then
-            xvfb-run -a ./test_robustness
+          if [ -f "./build/test_robustness" ]; then
+            xvfb-run -a ./build/test_robustness
           else
             echo "test_robustness not built (requires OCCT 8.0.0), skipping."
           fi
 
       - name: Run UI Smoke Test
         run: |
-          cd 3dmaster/build
-          QT_QPA_PLATFORM=offscreen xvfb-run -a ./test_ui_smoke
+          cd 3dmaster
+          QT_QPA_PLATFORM=offscreen xvfb-run -a ./build/test_ui_smoke
