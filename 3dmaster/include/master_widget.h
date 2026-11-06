@@ -16,6 +16,13 @@
 /**
  * @brief 紧凑型顶点布局结构体 (24字节: 12B pos + 12B normal)，节约 40% VRAM 显存带宽
  */
+
+struct BatchedEdgeVertex {
+    QVector3D position;
+    QVector4D color;
+    BatchedEdgeVertex(const QVector3D& p, const QVector4D& c) : position(p), color(c) {}
+};
+
 struct CompactVertex {
     QVector3D position;
     QVector3D normal;
@@ -140,8 +147,18 @@ private:
         QVector3D localAabbMin;
         QVector3D localAabbMax;
         bool hasLocalAabb = false;
+        int batchedIndexOffset = -1; // 批量边缘索引缓冲区的偏移量
     };
     QVector<GLMesh> m_glMeshes;
+
+    // Batching resources
+    std::shared_ptr<QOpenGLVertexArrayObject> m_batchedEdgeVAO;
+    std::shared_ptr<QOpenGLBuffer> m_batchedEdgeVBO;
+    std::shared_ptr<QOpenGLBuffer> m_batchedEdgeIBO;
+    std::vector<uint32_t> m_batchedEdgeIndices;
+    int m_activeBatchedEdgeIndexCount = 0;
+    void updateBatchedEdgeIBO();
+
 
     // 地面标尺网格静态 GPU 缓冲
     QOpenGLBuffer m_gridVbo{QOpenGLBuffer::VertexBuffer};
