@@ -10,7 +10,7 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
 # 依赖 Qt6 模块
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets GuiPrivate CorePrivate)
 
 # 官方 Seer-sdk 接口定义 (契约层)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Seer-sdk/CMakeLists.txt")
