@@ -52,8 +52,8 @@ target_link_directories(3dmaster PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../occt/wi
 
 target_link_libraries(3dmaster PRIVATE
     SeerSdk::SeerSdk
-    Qt6::Core
-    Qt6::CorePrivate
+    Qt6::Core Qt6::Gui
+    Qt6::Core Qt6::GuiPrivate
     Qt6::GuiPrivate
     Qt6::Gui
     Qt6::Widgets
@@ -113,7 +113,7 @@ add_executable(test_host test/test_host.cpp "${SeerSdk_SOURCE_DIR}/seer/viewerba
 target_link_libraries(test_host PRIVATE
     3dmaster
     SeerSdk::SeerSdk
-    Qt6::Core
+    Qt6::Core Qt6::Gui
     Qt6::Gui
     Qt6::Widgets
     Qt6::OpenGLWidgets
@@ -162,16 +162,19 @@ endif()
 
 add_executable(test_3mf test/test_3mf.cpp)
 target_link_libraries(test_3mf PRIVATE
-    Qt6::Core
-    Qt6::CorePrivate
+    Qt6::Core Qt6::Gui
+    Qt6::Core Qt6::GuiPrivate
     Qt6::GuiPrivate
     Qt6::Gui
 )
 
 
 
-
-
+add_executable(test_robustness test/test_robustness.cpp)
+target_link_libraries(test_robustness PRIVATE
+    3dmaster
+    Qt6::Core Qt6::Gui
+)
 add_executable(test_ui_smoke test/test_ui_smoke.cpp)
 target_link_libraries(test_ui_smoke PRIVATE
     Qt6::Core
@@ -191,3 +194,4 @@ else()
     target_compile_definitions(test_robustness PRIVATE DISABLE_OCCT_FOR_TESTING)
     target_link_libraries(test_robustness PRIVATE Qt6::Core Qt6::Gui Qt6::GuiPrivate Qt6::CorePrivate)
 endif()
+)
