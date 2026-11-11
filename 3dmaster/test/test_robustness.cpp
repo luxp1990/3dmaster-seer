@@ -3,7 +3,44 @@
 #include <QFile>
 #include <QDir>
 #include <iostream>
+#ifndef DISABLE_OCCT_FOR_TESTING
 #include "../include/model_loader_worker.h"
+#else
+#include <memory>
+#include <QString>
+#include <vector>
+
+struct MeshData {
+    std::vector<float> vertices;
+    std::vector<float> normals;
+    std::vector<uint32_t> indices;
+};
+struct ModelData {
+    std::vector<MeshData> meshes;
+};
+using ModelDataPtr = std::shared_ptr<ModelData>;
+
+class ModelLoaderWorker : public QObject {
+    Q_OBJECT
+public:
+    explicit ModelLoaderWorker(const QString& filePath, QObject* parent = nullptr) : QObject(parent) {}
+    virtual ~ModelLoaderWorker() {}
+
+    void requestCancel() {}
+    void startLoading() {
+        QTimer::singleShot(0, this, [this]() {
+            emit sigFailed("Test stub error");
+        });
+    }
+
+signals:
+    void sigFinished(ModelDataPtr model);
+    void sigFailed(const QString& errorMsg);
+};
+#endif
+
+
+
 
 void writeTestFile(const QString& path, const QByteArray& content) {
     QFile file(path);

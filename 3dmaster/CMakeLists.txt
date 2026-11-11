@@ -170,9 +170,22 @@ target_link_libraries(test_3mf PRIVATE
 
 
 
-
-add_executable(test_robustness test/test_robustness.cpp)
-target_link_libraries(test_robustness PRIVATE
-    3dmaster
-    Qt6::Core Qt6::Gui
+add_executable(test_ui_smoke test/test_ui_smoke.cpp)
+target_link_libraries(test_ui_smoke PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::OpenGL
+    Qt6::OpenGLWidgets
 )
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../occt/inc")
+    add_executable(test_robustness test/test_robustness.cpp)
+    target_include_directories(test_robustness PRIVATE include)
+    target_link_libraries(test_robustness PRIVATE 3dmaster Qt6::Core Qt6::Gui)
+else()
+    add_executable(test_robustness test/test_robustness.cpp)
+    target_include_directories(test_robustness PRIVATE include)
+    target_compile_definitions(test_robustness PRIVATE DISABLE_OCCT_FOR_TESTING)
+    target_link_libraries(test_robustness PRIVATE Qt6::Core Qt6::Gui Qt6::GuiPrivate Qt6::CorePrivate)
+endif()
