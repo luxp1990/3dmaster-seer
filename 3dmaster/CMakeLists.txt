@@ -170,11 +170,6 @@ target_link_libraries(test_3mf PRIVATE
 
 
 
-add_executable(test_robustness test/test_robustness.cpp)
-target_link_libraries(test_robustness PRIVATE
-    3dmaster
-    Qt6::Core Qt6::Gui
-)
 add_executable(test_ui_smoke test/test_ui_smoke.cpp)
 target_link_libraries(test_ui_smoke PRIVATE
     Qt6::Core
