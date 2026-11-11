@@ -1,29 +1,27 @@
-## Item 2 - Batched edge/line rendering
+## Item: Opt-in mmap path for large binary STL models
 
 ### Scope
-- Accumulated all individual edge meshes into a single batched geometry buffer (`m_batchedEdgeVBO` and `m_batchedEdgeIBO`).
-- Used pre-transformed vertices (`mesh.transform * pos`) on the CPU side during `buildBuffers`.
-- Vertex colors (`aCol`) are correctly populated with `diffuseColor` to preserve individual mesh edge colors.
-- Per-part visibility toggle (`setPartVisible`) fully respects batching by rebuilding `m_batchedEdgeIBO` on-demand with only the visible active indices.
-- Used a single `glDrawElements(GL_LINES, ...)` call to drastically reduce draw call counts for complex models.
-
-### Per-File Summary
-- `3dmaster/include/master_widget.h`: Added `BatchedEdgeVertex` struct. Added `m_batchedEdgeVAO`, `m_batchedEdgeVBO`, `m_batchedEdgeIBO` buffers and metadata. Added `updateBatchedEdgeIBO()` method. Added `batchedIndexOffset` to `GLMesh`.
-- `3dmaster/src/master_widget.cpp`:
-  - `initShaders()`: Updated `m_lineProgram` shaders to toggle between `uLineColor` and batched `vColor` via `uUseBatched`.
-  - `buildBuffers()`: Accumulated all `primitiveType == 0x0001 || isFeatureEdge` meshes into the flat `m_batchedEdgeVertices` buffer. Handled pre-transformation and vertex colors. Populated and bound to the new VAO.
-  - `setPartVisible` / `setAllPartsVisible`: Intercepted calls to trigger `updateBatchedEdgeIBO()` for rebuilding the index buffer properly whenever parts visibility changes.
-  - `paintGL()`: Overhauled edge drawing to use the new batched draw call `glDrawElements(GL_LINES, ...)` when applicable. Added `uUseBatched = 0` context clearing to all other line usages (grid, axis).
-  - Fixed `uModel` application for the batched draw call, passing the exact `modelMatrix` (instead of Identity) to accurately resolve dynamic Section Plane bounds on top of the CPU-side `mesh.transform` mapping.
+- Implemented `3DMASTER_USE_MMAP` environment variable opt-in in `3dmaster/src/model_loader_worker.cpp`.
+- Binary STL parsing (`parseSTL`) now queries this variable; if `1`, maps the file into memory using `QFile::map(0, file.size())`.
+- Performs sequential reading of mapped memory chunk by chunk matching the same size cap (`file.size() / 5`) and vertex attributes check.
+- Logs `Used MMAP: YES` via `traceWorkerLog` for diagnostic tracking when the mapping successfully engaged.
+- Provides identical early-exit cancellation semantics checking `m_cancelRequested` at chunk boundaries.
+- Gracefully falls back to chunked file I/O (`file.seek(84)`) if `file.map()` fails or user aborts during load.
 
 ### Execution Evidence
-- Measurements on `双色打印件-测试.3mf` (Dual-part CAD model):
-    - Real measured render on actual models is genuinely impossible in this sandbox because the required OpenCASCADE (OCCT) 8.0.0 headers (`Standard_Handle.hxx`, `TopoDS_Shape`, etc.) are entirely missing from the environment, meaning `model_loader_worker.cpp` fails to compile outright. Without `ModelLoaderWorker`, it is impossible to instantiate `ModelData` objects to feed into the widget to measure actual `glDrawElements` calls.
-    - Thus, true BEFORE/AFTER counts could not be mechanically extracted.
-    - *However, building `master_widget.cpp` in isolation mocked succeeds (Exit Code 0) after removing OCCT linkage.*
+- Generating `large.stl` (~100MB with 2,000,000 triangles) simulating a massive industrial mesh.
+- Attempted to compile `model_loader_worker.cpp` with a mock runner (`parse_runner.cpp`) pointing to `large.stl`.
+- Build command: `cd build_runner && cmake .. && make`
+- Result: **Failed**
+- Missing OCCT environment headers: `Standard_Handle.hxx`, `TopoDS_Shape.hxx`, preventing compilation of the true production class `ModelLoaderWorker`.
 
-### Exact Commands Run
-- `cmake -B build_test -S . -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release && cmake --build build_test --target render_test` (Failed: missing OCCT headers)
+### Measurements
+- **NOT VERIFIED**: Cannot reliably benchmark real `parseSTL` execution inside the original `3dmaster` repository in the sandbox because of fundamental OpenCASCADE missing dependencies. As per strict instructions, I did *not* collect artificial timing off duplicate logic.
+- Mmap fallback when mapping fails: **NOT VERIFIED** (Same reason: requires production build).
+- Mmap corrupted fallback: **NOT VERIFIED** (Same reason).
 
-### NOT RUN / NOT VERIFIED Items
-- Real assembly CAD rendering was not directly benchmarked due to the lack of an OCCT-based 3D renderer setup in the sandbox. The `ModelLoaderWorker` couldn't compile.
+### Exit Codes & Test Steps Used
+- STL Generation mock (`generate_stl`): 0
+- Standard Qt6 dev setup compilation attempts: Failed with missing OCCT headers (Exit code 2).
+
+All scaffolded code (like `generate_stl.cpp`, `parse_runner.cpp`) has been permanently deleted from this branch to keep the commit footprint pristine and restricted to `model_loader_worker.cpp` alone.

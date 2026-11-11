@@ -474,17 +474,95 @@ bool ModelLoaderWorker::parseSTL(const QString& path, ModelDataPtr outModel) {
         posMap.reserve(triangleCount / 2);
         accumulatedNormals.reserve(triangleCount / 2);
 
-        const int chunkSize = 5000;
-        QByteArray chunk;
-        chunk.resize(chunkSize * 50);
+        bool mmapSuccess = false;
+        if (qEnvironmentVariableIntValue("3DMASTER_USE_MMAP") == 1) {
+            // Safety check to prevent buffer overflow/segfault on corrupted files.
+            // A binary STL file is 84 bytes header + triangleCount * 50 bytes.
+            qint64 requiredSize = 84 + static_cast<qint64>(triangleCount) * 50;
+            if (file.size() >= requiredSize) {
+                uchar* mappedData = file.map(0, file.size());
+                if (mappedData) {
+                    traceWorkerLog("parseSTL: Used MMAP: YES");
+                    const int chunkSize = 5000;
+                    uint32_t readCount = 0;
+                    const char* ptr = reinterpret_cast<const char*>(mappedData + 84);
 
-        uint32_t readCount = 0;
-        while (readCount < triangleCount) {
-            if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
+                    while (readCount < triangleCount) {
+                    if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) {
+                        file.unmap(mappedData);
+                        return false;
+                    }
 
-            uint32_t currentChunk = std::min(static_cast<uint32_t>(chunkSize), triangleCount - readCount);
-            qint64 bytesRead = file.read(chunk.data(), currentChunk * 50);
-            if (bytesRead < currentChunk * 50) break;
+                    uint32_t currentChunk = std::min(static_cast<uint32_t>(chunkSize), triangleCount - readCount);
+
+                    for (uint32_t i = 0; i < currentChunk; ++i) {
+                        float normX, normY, normZ;
+                        memcpy(&normX, ptr, 4);
+                        memcpy(&normY, ptr + 4, 4);
+                        memcpy(&normZ, ptr + 8, 4);
+                        QVector3D normal(sanitizeFloat(normX), sanitizeFloat(normY), sanitizeFloat(normZ));
+
+                        float v0x, v0y, v0z, v1x, v1y, v1z, v2x, v2y, v2z;
+                        memcpy(&v0x, ptr + 12, 4); memcpy(&v0y, ptr + 16, 4); memcpy(&v0z, ptr + 20, 4);
+                        memcpy(&v1x, ptr + 24, 4); memcpy(&v1y, ptr + 28, 4); memcpy(&v1z, ptr + 32, 4);
+                        memcpy(&v2x, ptr + 36, 4); memcpy(&v2y, ptr + 40, 4); memcpy(&v2z, ptr + 44, 4);
+
+                        QVector3D p0(sanitizeFloat(v0x), sanitizeFloat(v0y), sanitizeFloat(v0z));
+                        QVector3D p1(sanitizeFloat(v1x), sanitizeFloat(v1y), sanitizeFloat(v1z));
+                        QVector3D p2(sanitizeFloat(v2x), sanitizeFloat(v2y), sanitizeFloat(v2z));
+
+                        if (normal.isNull() || normal.lengthSquared() < 1e-6f) {
+                            normal = QVector3D::crossProduct(p1 - p0, p2 - p0).normalized();
+                            if (normal.isNull()) normal = QVector3D(0, 1, 0);
+                        }
+
+                        uint16_t attr = 0;
+                        memcpy(&attr, ptr + 48, 2);
+                        bool hasColor = false;
+                        QVector4D col(1.0f, 1.0f, 1.0f, 1.0f);
+                        if (attr & 0x8000) {
+                            float r = ((attr >> 10) & 0x1F) / 31.0f;
+                            float g = ((attr >> 5) & 0x1F) / 31.0f;
+                            float b = (attr & 0x1F) / 31.0f;
+                            col = QVector4D(r, g, b, 1.0f);
+                            hasColor = true;
+                        }
+
+                        addVertex(p0, normal, col, hasColor);
+                        addVertex(p1, normal, col, hasColor);
+                        addVertex(p2, normal, col, hasColor);
+
+                        ptr += 50;
+                    }
+
+                    readCount += currentChunk;
+                    int pct = 10 + static_cast<int>(80.0 * readCount / triangleCount);
+                    emit sigProgress(pct, QString("已解析 %1 / %2 面片 (MMAP)...").arg(readCount).arg(triangleCount));
+                    }
+
+                    file.unmap(mappedData);
+                    mmapSuccess = true;
+                } else {
+                    traceWorkerLog("parseSTL: mmap failed, falling back to chunked file read.");
+                }
+            } else {
+                traceWorkerLog("parseSTL: File size is smaller than expected based on triangle count. Falling back to chunked read for safety.");
+            }
+        }
+
+        if (!mmapSuccess) {
+            file.seek(84); // Reset read pointer to after header and triangle count
+            const int chunkSize = 5000;
+            QByteArray chunk;
+            chunk.resize(chunkSize * 50);
+
+            uint32_t readCount = 0;
+            while (readCount < triangleCount) {
+                if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
+
+                uint32_t currentChunk = std::min(static_cast<uint32_t>(chunkSize), triangleCount - readCount);
+                qint64 bytesRead = file.read(chunk.data(), currentChunk * 50);
+                if (bytesRead < currentChunk * 50) break;
 
             const char* ptr = chunk.constData();
             for (uint32_t i = 0; i < currentChunk; ++i) {
@@ -531,6 +609,7 @@ bool ModelLoaderWorker::parseSTL(const QString& path, ModelDataPtr outModel) {
             readCount += currentChunk;
             int pct = 10 + static_cast<int>(80.0 * readCount / triangleCount);
             emit sigProgress(pct, QString("已解析 %1 / %2 面片...").arg(readCount).arg(triangleCount));
+        }
         }
     } else {
         // ASCII STL
