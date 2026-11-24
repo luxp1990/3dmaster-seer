@@ -25,17 +25,19 @@ jobs:
           target: 'desktop'
           arch: 'win64_msvc2022_64'
 
-      - name: Download & Extract OCCT 8.0.0
+      - name: Download & Extract OCCT 8.0.0 & 3rdparty
         shell: pwsh
         run: |
           Write-Host "Downloading OpenCASCADE 8.0.0 combined package from GitHub..."
           Invoke-WebRequest -Uri "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V8_0_0/occt-combined-release-pch.zip" -OutFile "occt-combined.zip"
+          Write-Host "Downloading OpenCASCADE 8.0.0 3rdparty dependencies (TBB, jemalloc, freetype)..."
+          Invoke-WebRequest -Uri "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V8_0_0/3rdparty-vc14-64.zip" -OutFile "3rdparty.zip"
           
-          Write-Host "Extracting outer archive..."
+          Write-Host "Extracting outer OCCT archive..."
           Expand-Archive -Path "occt-combined.zip" -DestinationPath "temp_occt"
           $nestedZip = Get-ChildItem -Path "temp_occt" -Filter "*.zip" | Select-Object -First 1
           
-          Write-Host "Extracting nested archive: $($nestedZip.FullName)..."
+          Write-Host "Extracting nested OCCT archive: $($nestedZip.FullName)..."
           Expand-Archive -Path $nestedZip.FullName -DestinationPath "occt"
           Remove-Item -Path "temp_occt", "occt-combined.zip" -Recurse -Force
 
@@ -51,11 +53,22 @@ jobs:
             }
           }
 
+          Write-Host "Extracting 3rdparty dependencies..."
+          Expand-Archive -Path "3rdparty.zip" -DestinationPath "temp_3rd"
+          $nested3rd = Get-ChildItem -Path "temp_3rd" -Filter "*.zip" | Select-Object -First 1
+          Expand-Archive -Path $nested3rd.FullName -DestinationPath "3rdparty"
+          Remove-Item -Path "temp_3rd", "3rdparty.zip" -Recurse -Force
+
+          Write-Host "Copying 3rdparty DLLs (tbb12, jemalloc, freetype...) into occt/win64/vc14/bin..."
+          Get-ChildItem -Path "3rdparty" -Recurse -Filter "*.dll" | ForEach-Object {
+            Copy-Item $_.FullName "occt/win64/vc14/bin/" -Force
+          }
+
           # Verify directories expected by CMake
           if (-not (Test-Path "occt/inc")) { throw "occt/inc directory missing after extraction!" }
           if (-not (Test-Path "occt/win64/vc14/lib")) { throw "occt/win64/vc14/lib directory missing after extraction!" }
           if (-not (Test-Path "occt/win64/vc14/bin")) { throw "occt/win64/vc14/bin directory missing after extraction!" }
-          Write-Host "OCCT 8.0.0 is verified and ready."
+          Write-Host "OCCT 8.0.0 & 3rdparty are verified and ready."
 
       - name: Configure CMake
         shell: pwsh
