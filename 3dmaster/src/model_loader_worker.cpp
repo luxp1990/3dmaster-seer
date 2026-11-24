@@ -1392,15 +1392,12 @@ struct StepPrototype {
     QString baseName;
     std::optional<QVector3D> defaultColor;
 };
-#endif // DISABLE_OCCT_FOR_TESTING
 
 struct StepInstance {
     int partId = 0;
     QString name;
     int protoId = -1;
-#ifndef DISABLE_OCCT_FOR_TESTING
     TopLoc_Location location;
-#endif
     std::optional<QVector3D> partColor;
 };
 
@@ -1839,6 +1836,28 @@ bool ModelLoaderWorker::parseGLTF(const QString& path, ModelDataPtr outModel) {
         return false;
     }
 }
+#else
+bool ModelLoaderWorker::parseSTEP(const QString& path, ModelDataPtr outModel) {
+    Q_UNUSED(path);
+    Q_UNUSED(outModel);
+    m_customErrorMessage = "当前安装为轻量网格预览版，STEP 格式需 OCCT 拓扑内核支持。";
+    return false;
+}
+
+bool ModelLoaderWorker::parseIGES(const QString& path, ModelDataPtr outModel) {
+    Q_UNUSED(path);
+    Q_UNUSED(outModel);
+    m_customErrorMessage = "当前安装为轻量网格预览版，IGES 格式需 OCCT 拓扑内核支持。";
+    return false;
+}
+
+bool ModelLoaderWorker::parseGLTF(const QString& path, ModelDataPtr outModel) {
+    Q_UNUSED(path);
+    Q_UNUSED(outModel);
+    m_customErrorMessage = "当前安装为轻量网格预览版，GLTF 格式需 OCCT 拓扑内核支持。";
+    return false;
+}
+#endif // DISABLE_OCCT_FOR_TESTING
 
 bool ModelLoaderWorker::parse3MF(const QString& path, ModelDataPtr outModel) {
     traceWorkerLog("parse3MF: Loading " + path);

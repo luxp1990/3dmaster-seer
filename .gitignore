@@ -48,7 +48,8 @@ aqtinstall.log
 test_*.png
 
 # === Seer 运行时文件 ===
-3dmaster.ini
+# 允许代码库自带默认的 3dmaster/3dmaster.ini
+!3dmaster/3dmaster.ini
 
 # === 大型测试模型 ===
 test_models/main_assembly.stp

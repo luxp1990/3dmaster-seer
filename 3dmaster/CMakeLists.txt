@@ -158,6 +158,44 @@ target_link_libraries(test_gltf PRIVATE
     TKService
 )
 
+else()
+
+add_library(3dmaster SHARED ${SOURCES} ${HEADERS})
+target_compile_definitions(3dmaster PRIVATE DISABLE_OCCT_FOR_TESTING)
+
+target_link_libraries(3dmaster PRIVATE
+    SeerSdk::SeerSdk
+    Qt6::Core Qt6::Gui
+    Qt6::Core Qt6::GuiPrivate
+    Qt6::GuiPrivate
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::OpenGL
+    Qt6::OpenGLWidgets
+)
+
+if(MSVC)
+    target_compile_options(3dmaster PRIVATE /utf-8)
+endif()
+
+if(WIN32)
+    target_link_libraries(3dmaster PRIVATE opengl32)
+endif()
+
+set_target_properties(3dmaster PROPERTIES
+    OUTPUT_NAME "3dmaster"
+    PREFIX ""
+)
+
+add_custom_command(TARGET 3dmaster POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/plugin.json"
+        "$<TARGET_FILE_DIR:3dmaster>/plugin.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/3dmaster.ini"
+        "$<TARGET_FILE_DIR:3dmaster>/3dmaster.ini"
+)
+
 endif()
 
 add_executable(test_3mf test/test_3mf.cpp)

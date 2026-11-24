@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-seer:
+    name: Build Seer Full Plugin (Windows)
+    runs-on: windows-2022
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Qt 6.8
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.2'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2022_64'
+          modules: 'qtbase'
+
+      - name: Download & Extract OCCT 8.0.0
+        shell: pwsh
+        run: |
+          Write-Host "Downloading OpenCASCADE 8.0.0 combined package from GitHub..."
+          Invoke-WebRequest -Uri "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V8_0_0/occt-combined-release-pch.zip" -OutFile "occt-combined.zip"
+          
+          Write-Host "Extracting outer archive..."
+          Expand-Archive -Path "occt-combined.zip" -DestinationPath "temp_occt"
+          $nestedZip = Get-ChildItem -Path "temp_occt" -Filter "*.zip" | Select-Object -First 1
+          
+          Write-Host "Extracting nested archive: $($nestedZip.FullName)..."
+          Expand-Archive -Path $nestedZip.FullName -DestinationPath "occt"
+          
+          Remove-Item -Path "temp_occt", "occt-combined.zip" -Recurse -Force
+
+          # Verify directories expected by CMake
+          if (-not (Test-Path "occt/inc")) { throw "occt/inc directory missing after extraction!" }
+          if (-not (Test-Path "occt/win64/vc14/lib")) { throw "occt/win64/vc14/lib directory missing after extraction!" }
+          if (-not (Test-Path "occt/win64/vc14/bin")) { throw "occt/win64/vc14/bin directory missing after extraction!" }
+          Write-Host "OCCT 8.0.0 is verified and ready."
+
+      - name: Configure CMake
+        shell: pwsh
+        run: |
+          cmake -B build -S 3dmaster -G "Visual Studio 17 2022" -A x64
+
+      - name: Build 3dmaster Plugin
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --target 3dmaster
+
+      - name: Package Release
+        id: pack
+        shell: pwsh
+        run: |
+          $distDir = "dist/3dmaster"
+          if (Test-Path $distDir) { Remove-Item $distDir -Recurse -Force }
+          New-Item -ItemType Directory -Path $distDir -Force | Out-Null
+
+          Write-Host "1. Copying 3dmaster core files..."
+          Copy-Item "build/Release/3dmaster.dll" "$distDir/" -Force
+          Copy-Item "3dmaster/plugin.json" "$distDir/" -Force
+          if (Test-Path "3dmaster/3dmaster.ini") {
+            Copy-Item "3dmaster/3dmaster.ini" "$distDir/" -Force
+          } else {
+            Set-Content -Path "$distDir/3dmaster.ini" -Value "[Navigation]`nPreset=0`n"
+          }
+
+          Write-Host "2. Copying OCCT runtime DLLs..."
+          $occtBin = "occt/win64/vc14/bin"
+          Get-ChildItem -Path $occtBin -Filter "*.dll" | ForEach-Object {
+            if ($_.Name -notmatch "d\.dll$") {
+              Copy-Item $_.FullName "$distDir/" -Force
+            }
+          }
+
+          $zipName = "3dmaster-seer-v1.0.0-windows-x64.zip"
+          Write-Host "3. Compressing $zipName..."
+          Compress-Archive -Path "$distDir/*" -DestinationPath $zipName -CompressionLevel Optimal
+          $sizeMb = [math]::Round((Get-Item $zipName).Length / 1MB, 2)
+          Write-Host "Packaged successfully: $zipName ($sizeMb MB)"
+          echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3dmaster-seer-windows-x64
+          path: ${{ env.ZIP_NAME }}
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { 'v1.0.0' }
+          $notes = "### 3dmaster for Windows Seer (Full Edition with OpenCASCADE 8.0.0)`n`n" +
+                   "Supported formats: STEP (.stp, .step), IGES (.igs, .iges), glTF (.gltf, .glb), 3MF, STL, OBJ, PLY, OFF, PRT.`n`n" +
+                   "**Installation:**`n" +
+                   "1. Download and extract ``3dmaster-seer-v1.0.0-windows-x64.zip```n" +
+                   "2. Copy all extracted files into your Seer plugin directory: ``C:\Program Files (x86)\Seer\plugins\3dmaster\```n" +
+                   "3. Restart Seer."
+
+          gh release create $tag $env:ZIP_NAME --title "3dmaster-seer $tag (Full OCCT Edition)" --notes "$notes" --clobber
