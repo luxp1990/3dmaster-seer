@@ -118,4 +118,5 @@ jobs:
                    "2. Copy all extracted files into your Seer plugin directory: ``C:\Program Files (x86)\Seer\plugins\3dmaster\```n" +
                    "3. Restart Seer."
 
-          gh release create $tag $env:ZIP_NAME --title "3dmaster-seer $tag (Full OCCT Edition)" --notes "$notes" --clobber
+          gh release delete $tag --yes 2>$null
+          gh release create $tag $env:ZIP_NAME --title "3dmaster-seer $tag (Full OCCT Edition)" --notes "$notes"
