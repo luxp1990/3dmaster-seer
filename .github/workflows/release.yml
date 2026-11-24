@@ -100,9 +100,7 @@ jobs:
           Write-Host "2. Copying OCCT runtime DLLs..."
           $occtBin = "occt/win64/vc14/bin"
           Get-ChildItem -Path $occtBin -Filter "*.dll" | ForEach-Object {
-            if ($_.Name -notmatch "d\.dll$") {
-              Copy-Item $_.FullName "$distDir/" -Force
-            }
+            Copy-Item $_.FullName "$distDir/" -Force
           }
 
           $zipName = "3dmaster-seer-v1.0.0-windows-x64.zip"
