@@ -51,7 +51,7 @@
 ## 📦 安装指南
 
 ### 方式一：通过 Seer 设置界面导入（推荐，兼容微软商店版）
-1. 从 [Release 页面](https://github.com/luxp1990/3dmaster-seer/releases) 下载最新发行版压缩包（如 `3dmaster-seer-v1.2.0-windows-x64.zip`）并解压。
+1. 从 [Release 页面](https://github.com/luxp1990/3dmaster-seer/releases) 下载最新发行版压缩包（如 `3dmaster-seer-v1.2.1-windows-x64.zip`）并解压。
 2. 打开 Seer 设置 -> 进入 **插件** 界面。
 3. 点击 **添加插件**，选择解压后的目录（包含 `3dmaster.dll` 和 `plugin.json`）。
 4. 确保列表中 `3dmaster` 处于**勾选启用**状态。
@@ -133,7 +133,7 @@ That motivated me to build **3dmaster-seer**, powered by the industrial-grade **
 
 ### Installation
 
-1. Download the latest archive (e.g., `3dmaster-seer-v1.2.0-windows-x64.zip`) from the [Releases](https://github.com/luxp1990/3dmaster-seer/releases) page and extract it.
+1. Download the latest archive (e.g., `3dmaster-seer-v1.2.1-windows-x64.zip`) from the [Releases](https://github.com/luxp1990/3dmaster-seer/releases) page and extract it.
 2. Open **Seer Settings -> Plugins**.
 3. Click **Add Plugin** and select the extracted folder (containing `3dmaster.dll` and `plugin.json`).
 4. Ensure `3dmaster` is checked/enabled in the plugin list.
