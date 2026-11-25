@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Install Qt 6.8
         uses: jurplel/install-qt-action@v4
@@ -103,7 +105,7 @@ jobs:
             Copy-Item $_.FullName "$distDir/" -Force
           }
 
-          $zipName = "3dmaster-seer-v1.1.0-windows-x64.zip"
+          $zipName = "3dmaster-seer-v1.2.0-windows-x64.zip"
           Write-Host "3. Compressing $zipName..."
           Compress-Archive -Path "$distDir/*" -DestinationPath $zipName -CompressionLevel Optimal
           $sizeMb = [math]::Round((Get-Item $zipName).Length / 1MB, 2)
@@ -121,11 +123,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { 'v1.1.0' }
+          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { 'v1.2.0' }
           $notes = "### 3dmaster for Windows Seer (Full Edition with OpenCASCADE 8.0.0)`n`n" +
                    "Supported formats: STEP (.stp, .step), IGES (.igs, .iges), glTF (.gltf, .glb), 3MF, STL, OBJ, PLY, OFF, PRT.`n`n" +
                    "**Installation:**`n" +
-                   "1. Download and extract ``3dmaster-seer-v1.1.0-windows-x64.zip```n" +
+                   "1. Download and extract ``3dmaster-seer-v1.2.0-windows-x64.zip```n" +
                    "2. Copy all extracted files into your Seer plugin directory: ``C:\Program Files (x86)\Seer\plugins\3dmaster\```n" +
                    "3. Restart Seer."
 

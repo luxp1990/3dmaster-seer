@@ -45,7 +45,7 @@ QSize MasterViewer::getContentSize() const {
 void MasterViewer::loadImpl(QBoxLayout* lay_content, QHBoxLayout* lay_ctrlbar) {
     Q_UNUSED(lay_ctrlbar);
     traceLog("loadImpl called");
-    master_i18n::initLanguage(getSettingsFilePath());
+    master_i18n::initLanguage(getSettingsFilePath(), QString(), true);
 
     if (m_widget && m_sidebar) {
         traceLog("loadImpl: UI layout already initialized, skipping duplicate layout rebuild");
@@ -242,8 +242,8 @@ void MasterViewer::onCancelRequested() {
         th->requestInterruption();
         if (th->isRunning()) {
             th->quit();
-            // 宿主卸载 DLL 或快速切换文件时优雅等待至多 1500ms，杜绝 OCCT 单例后台线程与 Guest DLL 卸载竞态
-            if (!th->wait(1500)) {
+            // 宿主卸载 DLL 或快速切换文件时优雅等待至多 5000ms（取消标记已置位，解析循环与 OCCT 指示器都会响应），杜绝 OCCT 单例后台线程与 Guest DLL 卸载竞态
+            if (!th->wait(5000)) {
                 // 超时后切断 QPointer 指针引用，避免野指针，剩余生命周期由 finished -> deleteLater 自回收
                 m_worker.clear();
                 m_workerThread.clear();

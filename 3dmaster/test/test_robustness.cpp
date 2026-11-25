@@ -4,7 +4,7 @@
 #include <QDir>
 #include <iostream>
 #ifndef DISABLE_OCCT_FOR_TESTING
-#include "../include/model_loader_worker.h"
+#include "model_loader_worker.h"
 #else
 #include <memory>
 #include <QString>
