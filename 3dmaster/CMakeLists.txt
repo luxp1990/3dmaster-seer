@@ -30,20 +30,20 @@ include_directories(include)
 set(SOURCES
     src/plugin_entry.cpp
     src/master_viewer.cpp
-    src/master_widget.cpp
-    src/master_sidebar.cpp
-    src/model_loader_worker.cpp
 )
 
 set(HEADERS
-    include/i18n.h
-    include/model_data.h
     include/master_viewer.h
-    include/master_widget.h
-    include/master_sidebar.h
-    include/model_loader_worker.h
     "${SeerSdk_SOURCE_DIR}/seer/viewerbase.h"
 )
+
+# 共享核心 (3dmaster-core, git submodule at repo-root core/): 解析器/模型数据/GL 渲染/侧边栏/i18n 的唯一真相源
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../occt/inc")
+    set(OCCT_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../occt/inc")
+else()
+    set(3DMASTER_CORE_DISABLE_OCCT ON CACHE BOOL "" FORCE)
+endif()
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../core" "${CMAKE_CURRENT_BINARY_DIR}/3dmaster_core")
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../occt/inc")
 add_library(3dmaster SHARED ${SOURCES} ${HEADERS})
@@ -53,6 +53,7 @@ target_link_directories(3dmaster PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../occt/wi
 
 target_link_libraries(3dmaster PRIVATE
     SeerSdk::SeerSdk
+    3dmaster_core
     Qt6::Core Qt6::Gui
     Qt6::Core Qt6::GuiPrivate
     Qt6::GuiPrivate
@@ -166,6 +167,7 @@ target_compile_definitions(3dmaster PRIVATE DISABLE_OCCT_FOR_TESTING)
 
 target_link_libraries(3dmaster PRIVATE
     SeerSdk::SeerSdk
+    3dmaster_core
     Qt6::Core Qt6::Gui
     Qt6::Core Qt6::GuiPrivate
     Qt6::GuiPrivate
@@ -220,11 +222,11 @@ target_link_libraries(test_ui_smoke PRIVATE
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../occt/inc")
     add_executable(test_robustness test/test_robustness.cpp)
-    target_include_directories(test_robustness PRIVATE include)
+    target_include_directories(test_robustness PRIVATE include "${CMAKE_CURRENT_SOURCE_DIR}/../core/include")
     target_link_libraries(test_robustness PRIVATE 3dmaster Qt6::Core Qt6::Gui)
 else()
     add_executable(test_robustness test/test_robustness.cpp)
-    target_include_directories(test_robustness PRIVATE include)
+    target_include_directories(test_robustness PRIVATE include "${CMAKE_CURRENT_SOURCE_DIR}/../core/include")
     target_compile_definitions(test_robustness PRIVATE DISABLE_OCCT_FOR_TESTING)
     target_link_libraries(test_robustness PRIVATE Qt6::Core Qt6::Gui Qt6::GuiPrivate Qt6::CorePrivate)
 endif()
