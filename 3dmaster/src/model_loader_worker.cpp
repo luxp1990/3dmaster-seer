@@ -1,4 +1,5 @@
 #include "model_loader_worker.h"
+#include "i18n.h"
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
@@ -291,11 +292,11 @@ void ModelLoaderWorker::startLoading() {
     traceWorkerLog("startLoading: m_filePath = '" + m_filePath + "'");
     emit sigStarted();
     QString fileName = QFileInfo(m_filePath).fileName();
-    emit sigProgress(5, QString("正在读取模型: %1...").arg(fileName));
+    emit sigProgress(5, master_i18n::tr("正在读取模型: %1...", "Loading model: %1...").arg(fileName));
 
     if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) {
         traceWorkerLog("startLoading: Cancelled early");
-        emit sigFailed("加载已取消");
+        emit sigFailed(master_i18n::tr("加载已取消", "Loading cancelled"));
         return;
     }
 
@@ -313,29 +314,29 @@ void ModelLoaderWorker::startLoading() {
 
     if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) {
         traceWorkerLog("startLoading: Cancelled after parse");
-        emit sigFailed("加载已取消");
+        emit sigFailed(master_i18n::tr("加载已取消", "Loading cancelled"));
         return;
     }
 
     if (!model || model->meshes.isEmpty()) {
         traceWorkerLog("startLoading: FAILED - model is null or meshes empty!");
         QString finalErr = m_customErrorMessage.isEmpty()
-            ? QString("未能从 [%1] 解析出有效三维几何体，可能文件暂未包含网格面片或特征").arg(fileName)
+            ? master_i18n::tr("未能从 [%1] 解析出有效三维几何体，可能文件暂未包含网格面片或特征", "No valid 3D geometry found in [%1]. The file may contain no meshes or shapes.").arg(fileName)
             : m_customErrorMessage;
         emit sigFailed(finalErr);
         return;
     }
 
     traceWorkerLog(QString("startLoading: SUCCESS - parsed %1 meshes! Calculating bounds...").arg(model->meshes.size()));
-    emit sigProgress(95, "正在计算模型三维包围盒与材质属性...");
+    emit sigProgress(95, master_i18n::tr("正在计算模型三维包围盒与材质属性...", "Computing bounding box and material properties..."));
     model->calculateBounds();
 
     if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) {
         traceWorkerLog("startLoading: Cancelled before emitting sigFinished");
-        emit sigFailed("加载已取消");
+        emit sigFailed(master_i18n::tr("加载已取消", "Loading cancelled"));
         return;
     }
-    emit sigProgress(100, "加载完成");
+    emit sigProgress(100, master_i18n::tr("加载完成", "Load complete"));
     traceWorkerLog("startLoading: Emitting sigFinished(model)...");
     emit sigFinished(model);
     traceWorkerLog("startLoading: sigFinished(model) emitted!");
@@ -412,7 +413,7 @@ bool ModelLoaderWorker::parseSTL(const QString& path, ModelDataPtr outModel) {
     // Safety cap: each binary STL triangle is 50 bytes. Also cap ASCII just in case.
     qint64 fileSize = file.size();
     if (static_cast<qint64>(triangleCount) > fileSize / 5) { // generous for ascii/binary
-        m_customErrorMessage = "安全拦截：文件声明的几何数量远超实际文件体积，可能为损坏文件。";
+        m_customErrorMessage = master_i18n::tr("安全拦截：文件声明的几何数量远超实际文件体积，可能为损坏文件。", "Security block: declared geometry count far exceeds file size; file may be corrupted.");
         return false;
     }
 
@@ -543,7 +544,7 @@ bool ModelLoaderWorker::parseSTL(const QString& path, ModelDataPtr outModel) {
 
                     readCount += currentChunk;
                     int pct = 10 + static_cast<int>(80.0 * readCount / triangleCount);
-                    emit sigProgress(pct, QString("已解析 %1 / %2 面片 (MMAP)...").arg(readCount).arg(triangleCount));
+                    emit sigProgress(pct, master_i18n::tr("已解析 %1 / %2 面片 (MMAP)...", "Parsed %1 / %2 triangles (MMAP)...").arg(readCount).arg(triangleCount));
                     }
 
                     file.unmap(mappedData);
@@ -614,7 +615,7 @@ bool ModelLoaderWorker::parseSTL(const QString& path, ModelDataPtr outModel) {
 
             readCount += currentChunk;
             int pct = 10 + static_cast<int>(80.0 * readCount / triangleCount);
-            emit sigProgress(pct, QString("已解析 %1 / %2 面片...").arg(readCount).arg(triangleCount));
+            emit sigProgress(pct, master_i18n::tr("已解析 %1 / %2 面片...", "Parsed %1 / %2 triangles...").arg(readCount).arg(triangleCount));
         }
         }
     } else {
@@ -628,7 +629,7 @@ bool ModelLoaderWorker::parseSTL(const QString& path, ModelDataPtr outModel) {
         while (!in.atEnd()) {
             if (++linesRead % 20000 == 0) {
                 if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
-                emit sigProgress(30, "正在流式解析 ASCII STL...");
+                emit sigProgress(30, master_i18n::tr("正在流式解析 ASCII STL...", "Streaming ASCII STL..."));
             }
             QString line = in.readLine().trimmed();
             if (line.startsWith("facet normal", Qt::CaseInsensitive)) {
@@ -689,7 +690,7 @@ bool ModelLoaderWorker::parseOBJ(const QString& path, ModelDataPtr outModel) {
     while (!in.atEnd()) {
         if (++lineCounter % 30000 == 0) {
             if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
-            emit sigProgress(40, QString("已解析 %1 行 OBJ 几何数据...").arg(lineCounter));
+            emit sigProgress(40, master_i18n::tr("已解析 %1 行 OBJ 几何数据...", "Parsed %1 lines of OBJ geometry...").arg(lineCounter));
         }
 
         QString line = in.readLine().trimmed();
@@ -824,7 +825,7 @@ bool ModelLoaderWorker::parsePLY(const QString& path, ModelDataPtr outModel) {
 
     qint64 plyFileSize = file.size();
     if (static_cast<qint64>(vertexCount) > plyFileSize / 12) {
-        m_customErrorMessage = "安全拦截：文件声明的顶点数量远超实际文件体积，可能为损坏文件。";
+        m_customErrorMessage = master_i18n::tr("安全拦截：文件声明的顶点数量远超实际文件体积，可能为损坏文件。", "Security block: declared vertex count far exceeds file size; file may be corrupted.");
         return false;
     }
 
@@ -1014,7 +1015,7 @@ bool ModelLoaderWorker::parseOFF(const QString& path, ModelDataPtr outModel) {
 
     qint64 offFileSize = file.size();
     if (static_cast<qint64>(vertexCount) > offFileSize / 5) {
-        m_customErrorMessage = "安全拦截：文件声明的顶点数量远超实际文件体积，可能为损坏文件。";
+        m_customErrorMessage = master_i18n::tr("安全拦截：文件声明的顶点数量远超实际文件体积，可能为损坏文件。", "Security block: declared vertex count far exceeds file size; file may be corrupted.");
         return false;
     }
 
@@ -1459,7 +1460,7 @@ static void walkAssemblyTree(const occ::handle<XCAFDoc_ShapeTool>& shapeTool,
         // 原生 UTF-16 提取中文原型名
         QString protoName = extractOccName(protoLabel);
         if (protoName.trimmed().isEmpty()) {
-            protoName = QString("原型_%1").arg(protoId + 1);
+            protoName = master_i18n::tr("原型_%1", "Prototype_%1").arg(protoId + 1);
         }
 
         std::optional<QVector3D> protoColor;
@@ -1501,7 +1502,7 @@ static void walkAssemblyTree(const occ::handle<XCAFDoc_ShapeTool>& shapeTool,
         instName = prototypes[protoId].baseName;
     }
     if (instName.trimmed().isEmpty()) {
-        instName = QString("零件_%1").arg(instances.size() + 1);
+        instName = master_i18n::tr("零件_%1", "Part_%1").arg(instances.size() + 1);
     }
 
     // 提取实例覆盖材质色
@@ -1528,7 +1529,7 @@ static void walkAssemblyTree(const occ::handle<XCAFDoc_ShapeTool>& shapeTool,
 
 bool ModelLoaderWorker::parseSTEP(const QString& path, ModelDataPtr outModel) {
     traceWorkerLog("parseSTEP (OCCT XCAF): Loading " + path);
-    emit sigProgress(15, "正在通过 OpenCASCADE 内核读取 CAD 几何与材质属性数据...");
+    emit sigProgress(15, master_i18n::tr("正在通过 OpenCASCADE 内核读取 CAD 几何与材质属性数据...", "Reading CAD geometry & material attributes via OpenCASCADE..."));
 
     // 合作式等待获取全局 OCCT 单例互斥锁 (杜绝多线程并发竞态)
     std::unique_lock<std::mutex> lock(g_occtSessionMutex, std::defer_lock);
@@ -1564,7 +1565,7 @@ bool ModelLoaderWorker::parseSTEP(const QString& path, ModelDataPtr outModel) {
 
         if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
 
-        emit sigProgress(45, "正在转换 CAD B-Rep 实体装配拓扑结构与属性树...");
+        emit sigProgress(45, master_i18n::tr("正在转换 CAD B-Rep 实体装配拓扑结构与属性树...", "Transferring CAD B-Rep assembly topology & attribute tree..."));
         occ::handle<OcctCancelIndicator> stepCancelIndicator = new OcctCancelIndicator(m_cancelRequested);
         reader.Transfer(docGuard.doc, stepCancelIndicator->Start());
         if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
@@ -1602,7 +1603,7 @@ bool ModelLoaderWorker::parseSTEP(const QString& path, ModelDataPtr outModel) {
                     int sIdx = 1;
                     for (TopExp_Explorer exp(oneShape, TopAbs_SOLID); exp.More(); exp.Next()) {
                         const TopoDS_Shape& solid = exp.Current();
-                        QString sName = QString("实体_%1").arg(sIdx);
+                        QString sName = master_i18n::tr("实体_%1", "Solid_%1").arg(sIdx);
                         std::optional<QVector3D> sCol;
                         if (!colorTool.IsNull()) {
                             Quantity_ColorRGBA cRGBA;
@@ -1631,7 +1632,7 @@ bool ModelLoaderWorker::parseSTEP(const QString& path, ModelDataPtr outModel) {
         bool result = false;
         if (instances.size() > 1) {
             // 原型单次剖分与实例展开
-            emit sigProgress(50, QString("正在离散化装配体原型 (共 %1 种原型结构)...").arg(prototypes.size()));
+            emit sigProgress(50, master_i18n::tr("正在离散化装配体原型 (共 %1 种原型结构)...", "Tessellating assembly prototypes (%1 total)...").arg(prototypes.size()));
             std::vector<QVector<SubMesh>> protoMeshes(prototypes.size());
             size_t totalTriangles = 0;
             double deflectionScale = 1.0;
@@ -1646,7 +1647,7 @@ bool ModelLoaderWorker::parseSTEP(const QString& path, ModelDataPtr outModel) {
                 }
 
                 int pct = 50 + static_cast<int>((pIdx + 1) * 35 / prototypes.size());
-                emit sigProgress(pct, QString("正在剖分零件原型 [%1/%2]: %3")
+                emit sigProgress(pct, master_i18n::tr("正在剖分零件原型 [%1/%2]: %3", "Meshing prototype [%1/%2]: %3")
                                  .arg(pIdx + 1).arg(prototypes.size()).arg(proto.baseName));
 
                 try {
@@ -1673,7 +1674,7 @@ bool ModelLoaderWorker::parseSTEP(const QString& path, ModelDataPtr outModel) {
 
             if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
 
-            emit sigProgress(85, QString("正在组装空间装配体部件 (共 %1 个实例)...").arg(instances.size()));
+            emit sigProgress(85, master_i18n::tr("正在组装空间装配体部件 (共 %1 个实例)...", "Assembling spatial instances (%1 total)...").arg(instances.size()));
             for (size_t i = 0; i < instances.size(); ++i) {
                 if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) break;
                 const auto& inst = instances[i];
@@ -1732,7 +1733,7 @@ bool ModelLoaderWorker::parseSTEP(const QString& path, ModelDataPtr outModel) {
 
 bool ModelLoaderWorker::parseIGES(const QString& path, ModelDataPtr outModel) {
     traceWorkerLog("parseIGES (OCCT): Loading " + path);
-    emit sigProgress(15, "正在通过 OpenCASCADE 内核读取 IGES 几何数据...");
+    emit sigProgress(15, master_i18n::tr("正在通过 OpenCASCADE 内核读取 IGES 几何数据...", "Reading IGES geometry via OpenCASCADE..."));
 
     std::unique_lock<std::mutex> lock(g_occtSessionMutex, std::defer_lock);
     while (!lock.try_lock()) {
@@ -1755,7 +1756,7 @@ bool ModelLoaderWorker::parseIGES(const QString& path, ModelDataPtr outModel) {
 
         if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
 
-        emit sigProgress(40, "正在转换 IGES 几何实体与装配 (TransferRoots)...");
+        emit sigProgress(40, master_i18n::tr("正在转换 IGES 几何实体与装配 (TransferRoots)...", "Transferring IGES entities & assembly (TransferRoots)..."));
         occ::handle<OcctCancelIndicator> igesCancelIndicator = new OcctCancelIndicator(m_cancelRequested);
         reader.TransferRoots(igesCancelIndicator->Start());
         if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
@@ -1769,7 +1770,7 @@ bool ModelLoaderWorker::parseIGES(const QString& path, ModelDataPtr outModel) {
         if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
 
         // IGES 模型常见破面与未缝合问题，通过 ShapeFix 进行强力几何自愈
-        emit sigProgress(55, "正在执行 IGES 拓扑自愈与曲面缝合 (ShapeFix)...");
+        emit sigProgress(55, master_i18n::tr("正在执行 IGES 拓扑自愈与曲面缝合 (ShapeFix)...", "Running IGES topology healing & sewing (ShapeFix)..."));
         ShapeFix_Shape fixer(shape);
         fixer.Perform(igesCancelIndicator->Start());
         if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
@@ -1790,7 +1791,7 @@ bool ModelLoaderWorker::parseIGES(const QString& path, ModelDataPtr outModel) {
 
 bool ModelLoaderWorker::parseGLTF(const QString& path, ModelDataPtr outModel) {
     traceWorkerLog("parseGLTF (OCCT): Loading " + path);
-    emit sigProgress(15, "正在通过 OpenCASCADE DEGLTF 内核读取 glTF/GLB 几何数据...");
+    emit sigProgress(15, master_i18n::tr("正在通过 OpenCASCADE DEGLTF 内核读取 glTF/GLB 几何数据...", "Reading glTF/GLB geometry via OpenCASCADE DEGLTF..."));
 
     std::unique_lock<std::mutex> lock(g_occtSessionMutex, std::defer_lock);
     while (!lock.try_lock()) {
@@ -1823,7 +1824,7 @@ bool ModelLoaderWorker::parseGLTF(const QString& path, ModelDataPtr outModel) {
 
         if (m_cancelRequested.load() || QThread::currentThread()->isInterruptionRequested()) return false;
 
-        emit sigProgress(50, "正在提取 glTF 网格与材质特征...");
+        emit sigProgress(50, master_i18n::tr("正在提取 glTF 网格与材质特征...", "Extracting glTF meshes & materials..."));
         return processShapeTessellation(shape, QFileInfo(path).baseName(), outModel);
     } catch (const Standard_Failure& e) {
         traceWorkerLog(QString("parseGLTF: OCCT Standard_Failure caught: %1").arg(e.GetMessageString()));
@@ -1840,28 +1841,28 @@ bool ModelLoaderWorker::parseGLTF(const QString& path, ModelDataPtr outModel) {
 bool ModelLoaderWorker::parseSTEP(const QString& path, ModelDataPtr outModel) {
     Q_UNUSED(path);
     Q_UNUSED(outModel);
-    m_customErrorMessage = "当前安装为轻量网格预览版，STEP 格式需 OCCT 拓扑内核支持。";
+    m_customErrorMessage = master_i18n::tr("当前安装为轻量网格预览版，STEP 格式需 OCCT 拓扑内核支持。", "Lightweight mesh edition installed; STEP format requires the OCCT topology kernel.");
     return false;
 }
 
 bool ModelLoaderWorker::parseIGES(const QString& path, ModelDataPtr outModel) {
     Q_UNUSED(path);
     Q_UNUSED(outModel);
-    m_customErrorMessage = "当前安装为轻量网格预览版，IGES 格式需 OCCT 拓扑内核支持。";
+    m_customErrorMessage = master_i18n::tr("当前安装为轻量网格预览版，IGES 格式需 OCCT 拓扑内核支持。", "Lightweight mesh edition installed; IGES format requires the OCCT topology kernel.");
     return false;
 }
 
 bool ModelLoaderWorker::parseGLTF(const QString& path, ModelDataPtr outModel) {
     Q_UNUSED(path);
     Q_UNUSED(outModel);
-    m_customErrorMessage = "当前安装为轻量网格预览版，GLTF 格式需 OCCT 拓扑内核支持。";
+    m_customErrorMessage = master_i18n::tr("当前安装为轻量网格预览版，GLTF 格式需 OCCT 拓扑内核支持。", "Lightweight mesh edition installed; GLTF format requires the OCCT topology kernel.");
     return false;
 }
 #endif // DISABLE_OCCT_FOR_TESTING
 
 bool ModelLoaderWorker::parse3MF(const QString& path, ModelDataPtr outModel) {
     traceWorkerLog("parse3MF: Loading " + path);
-    emit sigProgress(15, "正在解压缩 3MF 制造模型包 (QZipReader)...");
+    emit sigProgress(15, master_i18n::tr("正在解压缩 3MF 制造模型包 (QZipReader)...", "Extracting 3MF package (QZipReader)..."));
 
     std::unique_ptr<QZipReader> zip = std::make_unique<QZipReader>(path);
     if (!zip->isReadable()) {
@@ -1907,7 +1908,7 @@ bool ModelLoaderWorker::parse3MF(const QString& path, ModelDataPtr outModel) {
         return false;
     }
 
-    emit sigProgress(30, "正在流式解析 3MF 几何网格与装配结构 (QXmlStreamReader)...");
+    emit sigProgress(30, master_i18n::tr("正在流式解析 3MF 几何网格与装配结构 (QXmlStreamReader)...", "Streaming 3MF meshes & assembly structure (QXmlStreamReader)..."));
 
     struct RawObject {
         int id = 0;
@@ -2092,7 +2093,7 @@ bool ModelLoaderWorker::parse3MF(const QString& path, ModelDataPtr outModel) {
         }
     }
 
-    emit sigProgress(60, "正在计算 3MF 装配体原型与空间变换 (Prototype Instancing)...");
+    emit sigProgress(60, master_i18n::tr("正在计算 3MF 装配体原型与空间变换 (Prototype Instancing)...", "Computing 3MF prototype instancing & transforms..."));
 
     // 空间哈希顶点焊接与曲面平滑结构体
     struct PosKey {
@@ -2310,8 +2311,8 @@ bool ModelLoaderWorker::parse3MF(const QString& path, ModelDataPtr outModel) {
             SubMesh instMesh = baseMesh; // Qt 隐式共享零拷贝
             instMesh.partId = instanceCounter;
             instMesh.transform = parentTrsf;
-            instMesh.name = baseMesh.isFeatureEdge ? QString("零件_%1_edges").arg(instanceCounter)
-                                                   : (obj.name.isEmpty() ? QString("零件_%1").arg(instanceCounter) : obj.name);
+            instMesh.name = baseMesh.isFeatureEdge ? master_i18n::tr("零件_%1_edges", "Part_%1_edges").arg(instanceCounter)
+                                                   : (obj.name.isEmpty() ? master_i18n::tr("零件_%1", "Part_%1").arg(instanceCounter) : obj.name);
             outModel->meshes.push_back(std::move(instMesh));
         }
     };
@@ -2373,7 +2374,7 @@ bool ModelLoaderWorker::parsePRT(const QString& path, ModelDataPtr outModel) {
         isCreo = true;
     }
 
-    QString cadVendor = isSiemensNX ? "西门子 UG / Siemens NX" : (isCreo ? "PTC Creo / Pro-E" : "CAD 原生零件");
+    QString cadVendor = isSiemensNX ? master_i18n::tr("西门子 UG / Siemens NX", "Siemens NX (UG)").toUtf8().constData() : (isCreo ? "PTC Creo / Pro-E" : master_i18n::tr("CAD 原生零件", "Native CAD Part").toUtf8().constData());
 
     traceWorkerLog(QString("parsePRT: Identified vendor: %1 (isNX: %2, isCreo: %3)")
                    .arg(cadVendor).arg(isSiemensNX).arg(isCreo));
@@ -2506,7 +2507,7 @@ bool ModelLoaderWorker::parsePRT(const QString& path, ModelDataPtr outModel) {
             }
 
             if (!stpReady) {
-                emit sigProgress(15, "检测到西门子 UG 模型，正在调用本机 NX 引擎静默转码...");
+                emit sigProgress(15, master_i18n::tr("检测到西门子 UG 模型，正在调用本机 NX 引擎静默转码...", "Siemens NX model detected, converting silently via local NX engine..."));
 
                 // 并发保护：转码过程使用独立 PID + 随机后缀的临时文件，消除同键并发写冲突
                 quint32 rndVal = QRandomGenerator::global()->generate();
@@ -2604,7 +2605,7 @@ bool ModelLoaderWorker::parsePRT(const QString& path, ModelDataPtr outModel) {
                     elapsedMs += 200;
 
                     int progressPct = 15 + (elapsedMs * 35 / timeoutMs);
-                    emit sigProgress(progressPct, "正在调用 NX 引擎静默转码...");
+                    emit sigProgress(progressPct, master_i18n::tr("正在调用 NX 引擎静默转码...", "Converting via local NX engine..."));
                 }
 
                 if (proc.state() != QProcess::NotRunning) {
@@ -2612,7 +2613,7 @@ bool ModelLoaderWorker::parsePRT(const QString& path, ModelDataPtr outModel) {
                     proc.kill();
                     proc.waitForFinished(1000);
                     QFile::remove(tempStpPath);
-                    m_customErrorMessage = "转换超时：PRT 文件过大或转换进程未响应，已中止。";
+                    m_customErrorMessage = master_i18n::tr("转换超时：PRT 文件过大或转换进程未响应，已中止。", "Conversion timeout: PRT file is too large or converter did not respond.");
                     return false;
                 }
 
@@ -2678,7 +2679,7 @@ bool ModelLoaderWorker::parsePRT(const QString& path, ModelDataPtr outModel) {
             }
 
             if (stpReady) {
-                emit sigProgress(50, "UG 模型转码完成，正在载入拓扑几何与零件装配树...");
+                emit sigProgress(50, master_i18n::tr("UG 模型转码完成，正在载入拓扑几何与零件装配树...", "NX conversion complete, loading B-Rep geometry & assembly tree..."));
                 bool stepSuccess = parseSTEP(cachedStpPath, outModel);
                 if (stepSuccess && outModel) {
                     // 保持原始 prt 文件路径与元数据呈现
@@ -2702,31 +2703,53 @@ bool ModelLoaderWorker::parsePRT(const QString& path, ModelDataPtr outModel) {
     QString hintMsg;
     if (isSiemensNX) {
         if (hasLocalNX) {
-            hintMsg = QString(
+            hintMsg = master_i18n::tr(
                 "检测到【%1】专有零件格式 (.prt)\n"
                 "本机已检测到 UG/NX 安装目录: %2\n\n"
                 "💡 建议方案：\n"
                 "1. 本地静默转码未能导出该模型（可能是装配引用缺失或许可证限制）\n"
-                "2. 建议在 UG/NX 中手动导出为 STEP (.stp) 或 JT 格式，即可享受秒级无损 3D 预览与装配树交互"
+                "2. 建议在 UG/NX 中手动导出为 STEP (.stp) 或 JT 格式，即可享受秒级无损 3D 预览与装配树交互",
+                "Detected proprietary [%1] part format (.prt)\n"
+                "Local UG/NX installation found: %2\n\n"
+                "💡 Suggestions:\n"
+                "1. Silent local conversion failed (possible missing assembly references or license limit).\n"
+                "2. Export the model as STEP (.stp) or JT in UG/NX for instant lossless 3D preview & assembly tree."
             ).arg(cadVendor, detectedUgBaseDir);
         } else {
-            hintMsg = QString(
+            hintMsg = master_i18n::tr(
                 "检测到【%1】专有零件格式 (.prt)\n"
                 "此格式为西门子私有闭源二进制容器 (Parasolid 内部数据流)\n\n"
                 "💡 快速预览建议：\n"
                 "请在设计端另存/导出为 STEP (.stp / .step) 或 IGES (.igs) 工业标准格式\n"
-                "3dmaster 将为您提供真实材质色彩、截面剖切、装配树与特征棱线的完整极速预览"
+                "3dmaster 将为您提供真实材质色彩、截面剖切、装配树与特征棱线的完整极速预览",
+                "Detected proprietary [%1] part format (.prt)\n"
+                "This is a closed Siemens binary container (internal Parasolid stream).\n\n"
+                "💡 Quick Preview Tip:\n"
+                "Save or export as STEP (.stp / .step) or IGES (.igs) in your CAD software\n"
+                "to unlock full material colors, section views, assembly tree, and feature edges in 3dmaster."
             ).arg(cadVendor);
         }
     } else if (isCreo) {
-        hintMsg = QString(
-            "检测到【%1】专有零件格式 (.prt)\n"
-            "此格式为 PTC 私有闭源参数化模型文件\n\n"
-            "💡 快速预览建议：\n"
-            "请在 Creo 中导出为 STEP (.stp) 工业中性格式，即可在 3dmaster 中完整呈现"
-        ).arg(cadVendor);
+        hintMsg = master_i18n::tr(
+                "检测到【%1】专有零件格式 (.prt)
+"
+                "此格式为 PTC 私有闭源参数化模型文件
+
+"
+                "💡 快速预览建议：
+"
+                "请在 Creo 中导出为 STEP (.stp) 工业中性格式，即可在 3dmaster 中完整呈现",
+                "Detected proprietary [%1] part format (.prt)
+"
+                "This is a closed PTC parametric model file.
+
+"
+                "💡 Quick Preview Tip:
+"
+                "Export as STEP (.stp) in Creo to view the full model in 3dmaster."
+            ).arg(cadVendor);
     } else {
-        hintMsg = "当前 .prt 文件为专有 CAD 封闭模型格式\n\n💡 建议在原 CAD 软件中导出为 STEP (.stp) 格式以在 3dmaster 中预览。";
+        hintMsg = master_i18n::tr("当前 .prt 文件为专有 CAD 封闭模型格式\n\n💡 建议在原 CAD 软件中导出为 STEP (.stp) 格式以在 3dmaster 中预览。", "This .prt file is a proprietary closed CAD format.\n\n💡 Tip: Export it as STEP (.stp) in your CAD software to preview in 3dmaster.");
     }
 
     m_customErrorMessage = hintMsg;

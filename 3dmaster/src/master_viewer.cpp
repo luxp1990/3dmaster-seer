@@ -1,4 +1,5 @@
 #include "master_viewer.h"
+#include "i18n.h"
 #include <QHBoxLayout>
 #include <QDebug>
 #include <QFile>
@@ -44,6 +45,7 @@ QSize MasterViewer::getContentSize() const {
 void MasterViewer::loadImpl(QBoxLayout* lay_content, QHBoxLayout* lay_ctrlbar) {
     Q_UNUSED(lay_ctrlbar);
     traceLog("loadImpl called");
+    master_i18n::initLanguage(getSettingsFilePath());
 
     if (m_widget && m_sidebar) {
         traceLog("loadImpl: UI layout already initialized, skipping duplicate layout rebuild");
@@ -119,7 +121,8 @@ void MasterViewer::loadImpl(QBoxLayout* lay_content, QHBoxLayout* lay_ctrlbar) {
     traceLog(QString("loadImpl targetPath = '%1'").arg(targetPath));
 
     if (targetPath.isEmpty()) {
-        m_widget->setErrorMessage("无法获取待预览的文件路径 (options->path() 为空)");
+        m_widget->setErrorMessage(master_i18n::tr("无法获取待预览的文件路径 (options->path() 为空)",
+                                                  "Unable to get file path for preview (options->path() is empty)"));
         emit sigCommand(VCT_StateChange, VCV_Error);
         return;
     }
@@ -155,7 +158,7 @@ void MasterViewer::startAsyncLoad(const QString& filePath) {
         m_widget = new MasterWidget(this);
     }
 
-    m_widget->setLoading(true, "正在准备后台解析线程...");
+    m_widget->setLoading(true, master_i18n::tr("正在准备后台解析线程...", "Preparing background parsing thread..."));
     // 触发官方状态变更：Loading 中
     emit sigCommand(VCT_StateChange, VCV_Loading);
 

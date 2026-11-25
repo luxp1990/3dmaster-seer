@@ -36,6 +36,7 @@ set(SOURCES
 )
 
 set(HEADERS
+    include/i18n.h
     include/model_data.h
     include/master_viewer.h
     include/master_widget.h
