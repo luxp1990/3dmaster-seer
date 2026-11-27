@@ -61,8 +61,13 @@ jobs:
           Expand-Archive -Path $nested3rd.FullName -DestinationPath "3rdparty"
           Remove-Item -Path "temp_3rd", "3rdparty.zip" -Recurse -Force
 
-          Write-Host "Copying 3rdparty DLLs (tbb12, jemalloc, freetype...) into occt/win64/vc14/bin..."
-          Get-ChildItem -Path "3rdparty" -Recurse -Filter "*.dll" | ForEach-Object {
+          Write-Host "Copying release-variant 3rdparty DLLs (tbb12, jemalloc, freetype...) into occt/win64/vc14/bin..."
+          Get-ChildItem -Path "3rdparty" -Recurse -Filter "*.dll" | Where-Object {
+            $segments = $_.DirectoryName -split '[/\\]'
+            $inDebugDir = ($segments | Where-Object { $_ -ieq 'debug' }).Count -gt 0
+            $isDebugNamed = $_.Name -imatch '(_debug|-debug)\.dll$' -or ($_.FullName -imatch '[/\\]qt5\.[^/\\]+[/\\]' -and $_.Name -cmatch 'd\.dll$')
+            (-not $inDebugDir) -and (-not $isDebugNamed)
+          } | ForEach-Object {
             Copy-Item $_.FullName "occt/win64/vc14/bin/" -Force
           }
 
@@ -86,6 +91,25 @@ jobs:
         id: pack
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
+
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) {
+            throw "vswhere.exe not found at '$vswhere'. Cannot locate dumpbin.exe for dependency-closure packaging."
+          }
+          $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsPath -or -not (Test-Path $vsPath)) {
+            throw "Visual Studio VC++ Tools installation not found via vswhere.exe."
+          }
+          $dumpbin = Get-ChildItem -Path (Join-Path $vsPath "VC\Tools\MSVC") -Recurse -Filter "dumpbin.exe" |
+            Where-Object { $_.FullName -match '[/\\]Hostx64[/\\]x64[/\\]dumpbin\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $dumpbin -or -not (Test-Path $dumpbin)) {
+            throw "dumpbin.exe (Hostx64/x64) not found under '$vsPath'."
+          }
+          Write-Host "Using dumpbin: $dumpbin"
+
           $distDir = "dist/3dmaster"
           if (Test-Path $distDir) { Remove-Item $distDir -Recurse -Force }
           New-Item -ItemType Directory -Path $distDir -Force | Out-Null
@@ -99,14 +123,86 @@ jobs:
             Set-Content -Path "$distDir/3dmaster.ini" -Value "[Navigation]`nPreset=0`n"
           }
 
-          Write-Host "2. Copying OCCT runtime DLLs..."
+          Write-Host "2. Computing transitive PE import closure from 3dmaster.dll..."
           $occtBin = "occt/win64/vc14/bin"
-          Get-ChildItem -Path $occtBin -Filter "*.dll" | ForEach-Object {
-            Copy-Item $_.FullName "$distDir/" -Force
+          if (-not (Test-Path $occtBin)) {
+            throw "OCCT bin directory '$occtBin' does not exist."
           }
 
-          $zipName = "3dmaster-seer-v1.2.1-windows-x64.zip"
-          Write-Host "3. Compressing $zipName..."
+          $visited = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+          $queue = [System.Collections.Generic.Queue[string]]::new()
+          $rootBinary = (Resolve-Path "$distDir/3dmaster.dll").Path
+          $queue.Enqueue($rootBinary)
+          [void]$visited.Add("3dmaster.dll")
+
+          $copiedCount = 0
+          while ($queue.Count -gt 0) {
+            $current = $queue.Dequeue()
+            $dumpOut = & $dumpbin /nologo /dependents $current
+            if ($LASTEXITCODE -ne 0) {
+              throw "dumpbin /dependents failed for '$current' with exit code $LASTEXITCODE."
+            }
+
+            $inDepsSection = $false
+            foreach ($line in $dumpOut) {
+              if ($line -match 'Image has the following .*dependencies:') {
+                $inDepsSection = $true
+                continue
+              }
+              if ($inDepsSection -and $line -match '^\s*Summary\b') {
+                $inDepsSection = $false
+                continue
+              }
+              if ($inDepsSection -and $line -match '^\s*([^\s\\/:*?"<>|]+\.dll)\s*$') {
+                $depName = $Matches[1]
+                if ($visited.Add($depName)) {
+                  $srcPath = Join-Path $occtBin $depName
+                  if (Test-Path $srcPath) {
+                    $dstPath = Join-Path $distDir $depName
+                    Copy-Item $srcPath $dstPath -Force
+                    $copiedCount++
+                    $queue.Enqueue((Resolve-Path $dstPath).Path)
+                  }
+                }
+              }
+            }
+          }
+          Write-Host "Copied $copiedCount runtime DLLs in transitive closure."
+
+          Write-Host "3. Running PE import table debug-CRT gate..."
+          $forbiddenCrts = @("VCRUNTIME140D.dll", "MSVCP140D.dll", "ucrtbased.dll")
+          $offenders = [System.Collections.Generic.List[string]]::new()
+          $peFiles = Get-ChildItem -Path $distDir -Recurse -File | Where-Object { $_.Extension -in ".dll", ".exe" }
+          foreach ($pe in $peFiles) {
+            $importsOut = & $dumpbin /nologo /imports $pe.FullName
+            if ($LASTEXITCODE -ne 0) {
+              throw "dumpbin /imports failed for '$($pe.FullName)' with exit code $LASTEXITCODE."
+            }
+            $badImports = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+            foreach ($line in $importsOut) {
+              if ($line -match '^\s{4}([^\s\\/:*?"<>|]+\.dll)\s*$') {
+                $impDll = $Matches[1]
+                if ($forbiddenCrts -contains $impDll) {
+                  [void]$badImports.Add($impDll)
+                }
+              }
+            }
+            if ($badImports.Count -gt 0) {
+              $offenders.Add("$($pe.Name) -> $(($badImports | Sort-Object) -join ', ')")
+            }
+          }
+          if ($offenders.Count -gt 0) {
+            Write-Host "ERROR: Debug CRT dependencies detected in packaged binaries:"
+            foreach ($offender in $offenders) {
+              Write-Host "  - $offender"
+            }
+            exit 1
+          }
+          Write-Host "Debug-CRT gate passed: scanned $($peFiles.Count) PE binaries with 0 offenders."
+
+          $tagLabel = if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { 'dev' }
+          $zipName = "3dmaster-seer-$tagLabel-windows-x64.zip"
+          Write-Host "4. Compressing $zipName..."
           Compress-Archive -Path "$distDir/*" -DestinationPath $zipName -CompressionLevel Optimal
           $sizeMb = [math]::Round((Get-Item $zipName).Length / 1MB, 2)
           Write-Host "Packaged successfully: $zipName ($sizeMb MB)"
@@ -119,17 +215,20 @@ jobs:
           path: ${{ env.ZIP_NAME }}
 
       - name: Publish GitHub Release
+        if: github.event_name == 'push' && github.ref_type == 'tag'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { 'v1.2.1' }
+          $tag = $env:GITHUB_REF_NAME
+          if (-not $tag) {
+            throw "GITHUB_REF_NAME is empty; refusing to publish release without a real tag."
+          }
           $notes = "### 3dmaster for Windows Seer (Full Edition with OpenCASCADE 8.0.0)`n`n" +
                    "Supported formats: STEP (.stp, .step), IGES (.igs, .iges), glTF (.gltf, .glb), 3MF, STL, OBJ, PLY, OFF, PRT.`n`n" +
                    "**Installation:**`n" +
-                   "1. Download and extract ``3dmaster-seer-v1.2.1-windows-x64.zip```n" +
+                   "1. Download and extract ``$($env:ZIP_NAME)```n" +
                    "2. Copy all extracted files into your Seer plugin directory: ``C:\Program Files (x86)\Seer\plugins\3dmaster\```n" +
                    "3. Restart Seer."
 
-          gh release delete $tag --yes 2>$null
           gh release create $tag $env:ZIP_NAME --title "3dmaster-seer $tag (Full OCCT Edition)" --notes "$notes"
